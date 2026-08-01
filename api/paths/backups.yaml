@@ -1,0 +1,100 @@
+# 旅行备份接口路径。
+/trip-imports/preview:
+  post:
+    operationId: previewTripBackupImport
+    summary: Validate a portable trip backup and resolve its global dependencies
+    parameters:
+    - $ref: ../components/common.yaml#/parameters/CSRF
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required:
+            - backup
+            properties:
+              backup:
+                $ref: ../components/backups.yaml#/schemas/TripBackup
+    responses:
+      '200':
+        description: File validation, resource counts, and suggested member and tag mappings
+        content:
+          application/json:
+            schema:
+              $ref: ../components/backups.yaml#/schemas/TripBackupImportPreview
+      '400':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 旅行备份
+/trip-imports/apply:
+  post:
+    operationId: applyTripBackupImport
+    summary: Create a new trip from a validated portable backup
+    description: Revalidates the file and every explicit dependency mapping, allocates new trip-local
+      identities, and creates the complete aggregate in one transaction.
+    parameters:
+    - $ref: ../components/common.yaml#/parameters/CSRF
+    - $ref: ../components/common.yaml#/parameters/Idempotency
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required:
+            - backup
+            - confirmChecksum
+            - memberMappings
+            - tagMappings
+            properties:
+              backup:
+                $ref: ../components/backups.yaml#/schemas/TripBackup
+              confirmChecksum:
+                type: string
+                pattern: ^[a-f0-9]{64}$
+              memberMappings:
+                type: array
+                items:
+                  $ref: ../components/backups.yaml#/schemas/TripBackupDependencyMapping
+              tagMappings:
+                type: array
+                items:
+                  $ref: ../components/backups.yaml#/schemas/TripBackupDependencyMapping
+    responses:
+      '201':
+        description: Newly created trip, initial trip snapshot, and optional library snapshot
+        content:
+          application/json:
+            schema:
+              $ref: ../components/backups.yaml#/schemas/TripBackupImportResult
+      '400':
+        $ref: ../components/common.yaml#/responses/Problem
+      '403':
+        $ref: ../components/common.yaml#/responses/Problem
+      '409':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 旅行备份
+/trips/{tripId}/backup:
+  parameters:
+  - $ref: ../components/common.yaml#/parameters/TripID
+  get:
+    operationId: exportTripBackup
+    summary: Download the complete portable business state of one trip
+    description: The trip owner or an administrator may export referenced member and tag descriptors;
+      credentials and history are excluded. The complete recovery payload includes every selected member's
+      packing items. Administrator export does not grant trip read or edit access.
+    responses:
+      '200':
+        description: Portable JSON backup
+        content:
+          application/json:
+            schema:
+              $ref: ../components/backups.yaml#/schemas/TripBackup
+      '403':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 旅行备份

@@ -1,0 +1,117 @@
+# Web/API 只映射宿主机回环端口；MongoDB 只加入内部数据网络。
+services:
+  mongo:
+    image: ${MONGO_IMAGE:-mongo:8.0-noble@sha256:277f9152905bd1f32d3ece4526e0f90906dc238f7133b24ede8446ac9740b76d}
+    restart: unless-stopped
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    volumes:
+      - ${MONGO_DATA_DIR:-./.local/docker/mongo}:/data/db
+    networks:
+      - data
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --eval 'db.adminCommand({ping: 1}).ok' localhost:27017/test | grep 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  mongo-init:
+    image: ${MONGO_IMAGE:-mongo:8.0-noble@sha256:277f9152905bd1f32d3ece4526e0f90906dc238f7133b24ede8446ac9740b76d}
+    depends_on:
+      mongo:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - data
+    command: >-
+      mongosh --host mongo:27017 --quiet --eval
+      'try { rs.status() } catch (error) { rs.initiate({_id:"rs0",members:[{_id:0,host:"mongo:27017"}]}) }'
+
+  snapshot-init:
+    image: ${RUNTIME_IMAGE:-alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce}
+    user: "0:0"
+    network_mode: none
+    restart: "no"
+    volumes:
+      - ${SNAPSHOT_DATA_DIR:-./.local/docker/snapshots}:/data/snapshots
+    command: ["sh", "-c", "chown -R 10001:10001 /data/snapshots && chmod 700 /data/snapshots"]
+
+  api:
+    image: ${DEPLOY_PROJECT:-my-travel}-api:${RELEASE_IMAGE_TAG:-local}
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: api
+      args:
+        NODE_BUILD_IMAGE: ${NODE_BUILD_IMAGE:-node:24-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d}
+        GO_BUILD_IMAGE: ${GO_BUILD_IMAGE:-golang:1.26.5-bookworm@sha256:1ecb7edf62a0408027bd5729dfd6b1b8766e578e8df93995b225dfd0944eb651}
+        RUNTIME_IMAGE: ${RUNTIME_IMAGE:-alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce}
+        GO_MODULE_PROXY: ${GO_MODULE_PROXY:-https://proxy.golang.org,direct}
+    environment:
+      MONGODB_URI: mongodb://mongo:27017/${MONGODB_DATABASE:-my_travel}?replicaSet=rs0
+      MONGODB_DATABASE: ${MONGODB_DATABASE:-my_travel}
+      API_ADDRESS: 0.0.0.0:8502
+      APP_BASE_PATH: ${APP_BASE_PATH:-travel}
+      # 生产默认安全；本地 start.sh 显式写入 false，便于回环 HTTP 调试。
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      SNAPSHOT_DIR: /data/snapshots
+      SNAPSHOT_RECONCILE_INTERVAL: ${SNAPSHOT_RECONCILE_INTERVAL:-1m}
+      SNAPSHOT_RECONCILE_TIMEOUT: ${SNAPSHOT_RECONCILE_TIMEOUT:-10s}
+      SNAPSHOT_RECONCILE_BATCH: ${SNAPSHOT_RECONCILE_BATCH:-100}
+      BOOTSTRAP_TOKEN: ${BOOTSTRAP_TOKEN:?set an out-of-repo bootstrap token}
+      ADMIN_PROVISION_TOKEN: ${ADMIN_PROVISION_TOKEN:-}
+      AMAP_WEBSERVICE_KEY: ${AMAP_WEBSERVICE_KEY:-}
+      AMAP_JSAPI_KEY: ${AMAP_JSAPI_KEY:-}
+      AMAP_JSAPI_SECURITY_CODE: ${AMAP_JSAPI_SECURITY_CODE:-}
+    volumes:
+      - ${SNAPSHOT_DATA_DIR:-./.local/docker/snapshots}:/data/snapshots
+    ports:
+      - "127.0.0.1:${API_PORT:-8502}:8502"
+    networks:
+      - app
+      - data
+    depends_on:
+      mongo-init:
+        condition: service_completed_successfully
+      snapshot-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "/usr/bin/wget", "-qO-", "http://127.0.0.1:8502/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+
+  web:
+    image: ${DEPLOY_PROJECT:-my-travel}-web:${RELEASE_IMAGE_TAG:-local}
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: web
+      args:
+        APP_BASE_PATH: ${APP_BASE_PATH:-travel}
+        NODE_BUILD_IMAGE: ${NODE_BUILD_IMAGE:-node:24-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d}
+        GO_BUILD_IMAGE: ${GO_BUILD_IMAGE:-golang:1.26.5-bookworm@sha256:1ecb7edf62a0408027bd5729dfd6b1b8766e578e8df93995b225dfd0944eb651}
+        RUNTIME_IMAGE: ${RUNTIME_IMAGE:-alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce}
+        GO_MODULE_PROXY: ${GO_MODULE_PROXY:-https://proxy.golang.org,direct}
+    environment:
+      WEB_LISTEN_ADDR: 0.0.0.0:8501
+      APP_BASE_PATH: ${APP_BASE_PATH:-travel}
+      API_UPSTREAM_URL: http://api:8502
+    ports:
+      - "127.0.0.1:${APP_PORT:-8501}:8501"
+    networks:
+      - app
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/usr/bin/wget", "-qO-", "http://127.0.0.1:8501/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+
+networks:
+  app:
+  data:
+    internal: true

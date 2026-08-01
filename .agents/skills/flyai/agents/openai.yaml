@@ -1,0 +1,4 @@
+interface:
+  display_name: "飞猪旅行候选搜索"
+  short_description: "搜索航班火车酒店和景点候选，并标明结果时效与复核要求"
+  default_prompt: "使用 $flyai 搜索这场旅行的交通、住宿或景点候选，并标出需要复核的时效信息。"

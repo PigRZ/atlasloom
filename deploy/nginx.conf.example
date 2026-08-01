@@ -1,0 +1,100 @@
+# 独立服务器的完整 Nginx 入口模板。部署前替换主机、证书、路径和端口占位符。
+# 证书私钥只引用服务器路径，任何证书内容都不得复制进仓库。
+
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name __SERVER_IP__;
+
+    return 308 https://__SERVER_IP__$request_uri;
+}
+
+server {
+    listen 443 ssl http2 default_server;
+    listen [::]:443 ssl http2 default_server;
+    server_name __SERVER_IP__;
+
+    ssl_certificate __IP_CERTIFICATE_FULLCHAIN__;
+    ssl_certificate_key __IP_CERTIFICATE_PRIVATE_KEY__;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    client_max_body_size 16m;
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options SAMEORIGIN always;
+    add_header Referrer-Policy strict-origin-when-cross-origin always;
+
+    location = /__APP_BASE_PATH__ {
+        return 308 /__APP_BASE_PATH__/;
+    }
+
+    location = /__APP_BASE_PATH__/api {
+        return 308 /__APP_BASE_PATH__/api/;
+    }
+
+    location = /__APP_BASE_PATH__/healthz {
+        proxy_pass http://127.0.0.1:__APP_PORT__/healthz;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+
+    location = /__APP_BASE_PATH__/api/healthz {
+        proxy_pass http://127.0.0.1:__API_PORT__/healthz;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+
+    # 结尾的 / 会移除外部 API 前缀，Go API 接收 /auth、/trips 等根路径。
+    location /__APP_BASE_PATH__/api/ {
+        proxy_pass http://127.0.0.1:__API_PORT__/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Prefix /__APP_BASE_PATH__/api;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_buffering off;
+    }
+
+    # 高德 JSAPI 安全模式要求 _AMapService 是域名后的固定一级路由。
+    location /_AMapService/ {
+        proxy_pass http://127.0.0.1:__API_PORT__;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_buffering off;
+    }
+
+    # 不带结尾 / 的 proxy_pass 保留应用路径，供 React 静态服务和页面回退使用。
+    location /__APP_BASE_PATH__/ {
+        proxy_pass http://127.0.0.1:__APP_PORT__;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Prefix /__APP_BASE_PATH__;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+}

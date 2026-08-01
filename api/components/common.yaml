@@ -1,0 +1,93 @@
+# common数据结构。
+schemas:
+  Problem:
+    type: object
+    additionalProperties: false
+    required:
+    - type
+    - title
+    - status
+    - code
+    - detail
+    - requestId
+    properties:
+      type:
+        type: string
+        format: uri
+      title:
+        type: string
+      status:
+        type: integer
+      code:
+        type: string
+      detail:
+        type: string
+      requestId:
+        type: string
+      fieldErrors:
+        type: object
+        additionalProperties:
+          type: string
+  Health:
+    type: object
+    additionalProperties: false
+    required:
+    - status
+    properties:
+      status:
+        type: string
+        enum:
+        - ok
+securitySchemes:
+  sessionCookie:
+    type: apiKey
+    in: cookie
+    name: travel_session
+parameters:
+  TripID:
+    name: tripId
+    in: path
+    required: true
+    schema:
+      type: string
+      pattern: ^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$
+  Resource:
+    name: resource
+    in: path
+    required: true
+    schema:
+      $ref: ./records.yaml#/schemas/ResourceName
+  SnapshotID:
+    name: snapshotId
+    in: path
+    required: true
+    schema:
+      type: string
+  CSRF:
+    name: X-CSRF-Token
+    in: header
+    required: true
+    schema:
+      type: string
+  Idempotency:
+    name: Idempotency-Key
+    in: header
+    required: true
+    schema:
+      type: string
+      minLength: 16
+      maxLength: 128
+  IfMatch:
+    name: If-Match
+    in: header
+    required: true
+    schema:
+      type: integer
+      minimum: 1
+responses:
+  Problem:
+    description: Problem JSON
+    content:
+      application/problem+json:
+        schema:
+          $ref: '#/schemas/Problem'

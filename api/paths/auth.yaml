@@ -1,0 +1,140 @@
+# 认证与个人资料接口路径。
+/auth/bootstrap:
+  post:
+    operationId: bootstrap
+    summary: Create the first owner
+    security: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../components/auth.yaml#/schemas/Bootstrap
+    responses:
+      '201':
+        description: First owner created
+        content:
+          application/json:
+            schema:
+              $ref: ../components/auth.yaml#/schemas/MemberResponse
+      '403':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 认证与个人资料
+/auth/users:
+  post:
+    operationId: provisionUser
+    summary: Create a travel editor with the private provision token
+    description: This endpoint is disabled unless ADMIN_PROVISION_TOKEN is configured on the server. The
+      token is submitted in the JSON body so command-line clients can keep it out of process arguments.
+      The created authenticated member does not join any trip until selected.
+    security: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../components/auth.yaml#/schemas/ProvisionUser
+    responses:
+      '201':
+        description: 成员已创建，且不会自动获得任何旅行权限
+        content:
+          application/json:
+            schema:
+              $ref: ../components/auth.yaml#/schemas/MemberResponse
+      '403':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 认证与个人资料
+/auth/login:
+  post:
+    operationId: login
+    summary: Sign in
+    security: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../components/auth.yaml#/schemas/Login
+    responses:
+      '200':
+        description: Session created
+        content:
+          application/json:
+            schema:
+              $ref: ../components/auth.yaml#/schemas/Session
+      '401':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 认证与个人资料
+/auth/logout:
+  post:
+    operationId: logout
+    summary: Sign out
+    parameters:
+    - $ref: ../components/common.yaml#/parameters/CSRF
+    responses:
+      '204':
+        description: Session deleted
+      '401':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 认证与个人资料
+/session:
+  get:
+    operationId: getSession
+    summary: Get the active session
+    responses:
+      '200':
+        description: Active session
+        content:
+          application/json:
+            schema:
+              $ref: ../components/auth.yaml#/schemas/Session
+      '401':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 认证与个人资料
+/profile:
+  get:
+    operationId: getOwnProfile
+    summary: Get the current member profile
+    responses:
+      '200':
+        description: Current member record and authenticated identity
+        content:
+          application/json:
+            schema:
+              $ref: ../components/auth.yaml#/schemas/ProfileResponse
+      '401':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 认证与个人资料
+  patch:
+    operationId: updateOwnProfile
+    summary: Update the current member profile without invalidating the active session
+    parameters:
+    - $ref: ../components/common.yaml#/parameters/CSRF
+    - $ref: ../components/common.yaml#/parameters/IfMatch
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../components/auth.yaml#/schemas/ProfileUpdate
+    responses:
+      '200':
+        description: Profile, identity and complete library snapshot updated
+        content:
+          application/json:
+            schema:
+              $ref: ../components/auth.yaml#/schemas/ProfileUpdateResponse
+      '401':
+        $ref: ../components/common.yaml#/responses/Problem
+      '403':
+        $ref: ../components/common.yaml#/responses/Problem
+      '409':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 认证与个人资料

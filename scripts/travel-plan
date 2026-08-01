@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# 把 .local/ai-trips 中经人工审查的计划编译为可预览导入的旅行备份。
+
+project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+plan_root="${TRAVEL_PLAN_ROOT:-$project_dir/.local/ai-trips}"
+
+usage() {
+  cat <<'EOF'
+用法：./scripts/travel-plan build <trip-slug>
+
+固定文件：
+  输入  .local/ai-trips/<trip-slug>/plan.json
+  输出  .local/ai-trips/<trip-slug>/trip-backup.json
+
+输出文件不会覆盖；修改计划后请先人工处理旧备份。
+EOF
+}
+
+die() {
+  echo "$*" >&2
+  exit 2
+}
+
+run_travelctl() {
+  if [[ -n "${TRAVELCTL_BIN:-}" ]]; then
+    "$TRAVELCTL_BIN" "$@"
+  else
+    command -v go >/dev/null 2>&1 ||
+      die "未找到 Go；AI 旅程编译需要项目 go.mod 对应的 Go 工具链。"
+    (cd "$project_dir/server" && go run ./cmd/travelctl "$@")
+  fi
+}
+
+command_name="${1:-}"
+slug="${2:-}"
+[[ "$command_name" == "build" && -n "$slug" && $# -eq 2 ]] || {
+  usage >&2
+  exit 2
+}
+[[ "$slug" =~ ^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$ ]] ||
+  die "trip-slug 只能包含小写字母、数字和连字符，且最长 64 个字符。"
+
+trip_dir="$plan_root/$slug"
+input="$trip_dir/plan.json"
+output="$trip_dir/trip-backup.json"
+[[ -d "$trip_dir" ]] || die "AI 旅程目录不存在：$trip_dir"
+[[ -f "$input" ]] || die "AI 旅程计划不存在：$input"
+[[ ! -e "$output" ]] || die "输出文件已存在，不会覆盖：$output"
+chmod 700 "$trip_dir"
+chmod 600 "$input"
+
+run_travelctl build-trip-backup --input "$input" --output "$output"

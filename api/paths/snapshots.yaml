@@ -1,0 +1,185 @@
+# 快照接口路径。
+/trips/{tripId}/snapshots:
+  parameters:
+  - $ref: ../components/common.yaml#/parameters/TripID
+  get:
+    operationId: listSnapshots
+    summary: List trip snapshots
+    description: Owner-only snapshot history. Snapshot payloads remain complete aggregate records and
+      are an explicit restore exception to per-member packing-item reads.
+    responses:
+      '200':
+        description: Snapshot summaries in reverse chronological order
+        content:
+          application/json:
+            schema:
+              $ref: ../components/snapshots.yaml#/schemas/SnapshotsResponse
+      '403':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 快照
+/trips/{tripId}/snapshots/{snapshotId}:
+  parameters:
+  - $ref: ../components/common.yaml#/parameters/TripID
+  - $ref: ../components/common.yaml#/parameters/SnapshotID
+  get:
+    operationId: downloadSnapshot
+    summary: Download a trip snapshot
+    description: Owner-only download of a complete immutable Trip snapshot. The complete restore payload
+      includes every selected member's packing items.
+    responses:
+      '200':
+        description: Complete immutable snapshot JSON with stable revision and content checksum
+        content:
+          application/json:
+            schema:
+              $ref: ../components/snapshots.yaml#/schemas/SnapshotPayload
+      '403':
+        $ref: ../components/common.yaml#/responses/Problem
+      '404':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 快照
+/trips/{tripId}/snapshots/{snapshotId}/restore-preview:
+  parameters:
+  - $ref: ../components/common.yaml#/parameters/TripID
+  - $ref: ../components/common.yaml#/parameters/SnapshotID
+  get:
+    operationId: previewSnapshotRestore
+    summary: Preview a snapshot restore
+    description: Owner-only semantic preview. It never changes MongoDB.
+    responses:
+      '200':
+        description: Complete current-to-target Trip metadata and per-resource semantic diff
+        content:
+          application/json:
+            schema:
+              $ref: ../components/snapshots.yaml#/schemas/RestorePreview
+      '400':
+        $ref: ../components/common.yaml#/responses/Problem
+      '403':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 快照
+/trips/{tripId}/snapshots/{snapshotId}/restore:
+  parameters:
+  - $ref: ../components/common.yaml#/parameters/TripID
+  - $ref: ../components/common.yaml#/parameters/SnapshotID
+  - $ref: ../components/common.yaml#/parameters/CSRF
+  - $ref: ../components/common.yaml#/parameters/IfMatch
+  post:
+    operationId: restoreSnapshot
+    summary: Restore a trip snapshot
+    description: Owner-only restore. It writes only when the transaction-time semantic diff contains changes;
+      an already synchronized target returns restored=false and creates no snapshot. Restore cannot change
+      the Trip logical-deletion state.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required:
+            - confirmSnapshotId
+            - allowDelete
+            properties:
+              confirmSnapshotId:
+                type: string
+              allowDelete:
+                type: boolean
+                description: Must be true when the preview deleteCount is greater than zero
+    responses:
+      '200':
+        description: Restore result; before and after are present only when restored=true
+        content:
+          application/json:
+            schema:
+              $ref: ../components/snapshots.yaml#/schemas/SnapshotRestoreResult
+      '400':
+        $ref: ../components/common.yaml#/responses/Problem
+      '403':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 快照
+/trips/{tripId}/snapshot-imports/preview:
+  parameters:
+  - $ref: ../components/common.yaml#/parameters/TripID
+  - $ref: ../components/common.yaml#/parameters/CSRF
+  - $ref: ../components/common.yaml#/parameters/IfMatch
+  post:
+    operationId: previewSnapshotImport
+    summary: Preview a snapshot import
+    description: Owner-only validation and semantic diff. It never changes MongoDB.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required:
+            - snapshot
+            properties:
+              snapshot:
+                $ref: ../components/snapshots.yaml#/schemas/SnapshotPayload
+    responses:
+      '200':
+        description: Validation result and per-resource diff
+        content:
+          application/json:
+            schema:
+              $ref: ../components/snapshots.yaml#/schemas/SnapshotImportPreview
+      '403':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 快照
+/trips/{tripId}/snapshot-imports/apply:
+  parameters:
+  - $ref: ../components/common.yaml#/parameters/TripID
+  - $ref: ../components/common.yaml#/parameters/CSRF
+  - $ref: ../components/common.yaml#/parameters/Idempotency
+  - $ref: ../components/common.yaml#/parameters/IfMatch
+  post:
+    operationId: applySnapshotImport
+    summary: Apply a snapshot import
+    description: Owner-only full replacement. The checksum and base revision are revalidated in one transaction.
+      Any resource or membership deletion requires allowDelete=true. Snapshot import cannot change
+      the Trip logical-deletion state.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required:
+            - snapshot
+            - confirmChecksum
+            - allowDelete
+            properties:
+              snapshot:
+                $ref: ../components/snapshots.yaml#/schemas/SnapshotPayload
+              confirmChecksum:
+                type: string
+                pattern: ^[a-f0-9]{64}$
+              allowDelete:
+                type: boolean
+                default: false
+    responses:
+      '200':
+        description: Apply result; before and after are present only when applied=true
+        content:
+          application/json:
+            schema:
+              $ref: ../components/snapshots.yaml#/schemas/SnapshotImportApplyResult
+      '400':
+        $ref: ../components/common.yaml#/responses/Problem
+      '403':
+        $ref: ../components/common.yaml#/responses/Problem
+      '409':
+        $ref: ../components/common.yaml#/responses/Problem
+      '412':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 快照

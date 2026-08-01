@@ -1,0 +1,48 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 5
+    groups:
+      frontend-non-major:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+    ignore:
+      - dependency-name: typescript
+        versions:
+          - ">=7"
+
+  - package-ecosystem: gomod
+    directory: /server
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 5
+    groups:
+      server:
+        patterns:
+          - "*"
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 5

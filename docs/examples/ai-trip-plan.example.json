@@ -1,0 +1,185 @@
+{
+  "trip": {
+    "id": "sample-city-weekend",
+    "title": "示例城市周末",
+    "summary": "博物馆与街区漫步；所有开放时间、班次和价格都要在出发前复核。",
+    "startDate": "2026-09-01",
+    "endDate": "2026-09-02",
+    "timezone": "Asia/Shanghai",
+    "currency": "CNY"
+  },
+  "tags": [
+    {
+      "key": "transport-hub",
+      "name": "交通枢纽",
+      "category": "place-type"
+    },
+    {
+      "key": "attraction",
+      "name": "景点",
+      "category": "place-type"
+    },
+    {
+      "key": "transport-expense",
+      "name": "交通",
+      "category": "expense-type"
+    },
+    {
+      "key": "ticket-expense",
+      "name": "门票",
+      "category": "expense-type"
+    },
+    {
+      "key": "official-platform",
+      "name": "景区官方",
+      "category": "platform-type"
+    },
+    {
+      "key": "xiaohongshu",
+      "name": "小红书",
+      "category": "platform-type",
+      "color": "#FF2442"
+    }
+  ],
+  "members": [
+    {
+      "key": "traveler-a",
+      "displayName": "成员甲"
+    }
+  ],
+  "days": [
+    {
+      "key": "day-20260901",
+      "title": "抵达与博物馆",
+      "date": "2026-09-01",
+      "placeEntries": [
+        {
+          "placeKey": "sample-station",
+          "arrivalTime": "09:00",
+          "departureTime": "09:30"
+        },
+        {
+          "placeKey": "sample-museum",
+          "arrivalTime": "10:00",
+          "departureTime": "12:00",
+          "additionalInfo": "预约失败时改为附近街区步行。"
+        }
+      ],
+      "additionalInfo": "出发前一天复核列车与场馆开放状态。"
+    },
+    {
+      "key": "day-20260902",
+      "title": "街区与返程",
+      "date": "2026-09-02",
+      "placeEntries": [
+        {
+          "placeKey": "sample-station",
+          "arrivalTime": "16:00"
+        }
+      ]
+    }
+  ],
+  "places": [
+    {
+      "key": "sample-station",
+      "name": "示例火车站",
+      "typeTagKey": "transport-hub",
+      "address": "示例市示例路 1 号",
+      "region": "示例市",
+      "latitude": 30.1001,
+      "longitude": 120.1001,
+      "weatherAdcode": "110101",
+      "navigationURL": "https://uri.amap.com/marker?position=120.1001,30.1001"
+    },
+    {
+      "key": "sample-museum",
+      "name": "示例博物馆",
+      "typeTagKey": "attraction",
+      "address": "示例市示例路 2 号",
+      "region": "示例市",
+      "latitude": 30.2002,
+      "longitude": 120.2002,
+      "weatherAdcode": "110101",
+      "navigationURL": "https://uri.amap.com/marker?position=120.2002,30.2002",
+      "openingHours": "以出发前官方公告为准",
+      "recommendedTicketPlatform": "景区官方"
+    }
+  ],
+  "segments": [
+    {
+      "key": "station-to-museum",
+      "dayKey": "day-20260901",
+      "fromPlaceKey": "sample-station",
+      "toPlaceKey": "sample-museum",
+      "mode": "public_transit",
+      "departureTime": "09:30",
+      "durationMinutes": 30,
+      "additionalInfo": "时长为规划估算，不代表实时路况。"
+    }
+  ],
+  "bookings": [
+    {
+      "key": "museum-ticket",
+      "item": "博物馆预约",
+      "typeTagKey": "ticket-expense",
+      "bookerMemberKey": "traveler-a",
+      "placeKey": "sample-museum",
+      "platformTagKey": "official-platform",
+      "dateTime": "2026-09-01T10:00",
+      "status": "needs_booking",
+      "notes": "最晚在官方放票日确认。"
+    }
+  ],
+  "expenses": [
+    {
+      "key": "museum-ticket-expense",
+      "item": "博物馆预约",
+      "splitMode": "selected",
+      "splitMemberKeys": [
+        "traveler-a"
+      ],
+      "bookingKey": "museum-ticket",
+      "notes": "价格未知，预约成功后登记实际金额。"
+    },
+    {
+      "key": "arrival-transport",
+      "item": "抵达交通预算",
+      "occurredAt": "2026-09-01T09:30",
+      "typeTagKey": "transport-expense",
+      "amountMinor": 12800,
+      "payerMemberKey": "traveler-a",
+      "splitMode": "selected",
+      "splitMemberKeys": [
+        "traveler-a"
+      ],
+      "notes": "示例预算，不代表实时价格。"
+    }
+  ],
+  "packingItems": [
+    {
+      "key": "identity-document",
+      "item": "身份证件",
+      "category": "document",
+      "dayKeys": [
+        "day-20260901",
+        "day-20260902"
+      ],
+      "ownerMemberKey": "traveler-a",
+      "quantity": 1,
+      "packed": false
+    }
+  ],
+  "researchEvidence": [
+    {
+      "key": "museum-reservation-note",
+      "title": "博物馆预约与开放提示",
+      "content": "经验来源仅用于发现风险；开放时间和预约规则需回到官方渠道复核。来源：https://www.xiaohongshu.com/",
+      "platformTagKey": "xiaohongshu",
+      "recordedByMemberKey": "traveler-a",
+      "dayKeys": [
+        "day-20260901"
+      ],
+      "placeKey": "sample-museum"
+    }
+  ]
+}

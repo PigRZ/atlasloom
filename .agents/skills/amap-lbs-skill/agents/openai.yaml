@@ -1,0 +1,4 @@
+interface:
+  display_name: "高德旅行地理信息"
+  short_description: "查询高德地点坐标路线和天气，生成可核验的旅行地理证据"
+  default_prompt: "使用 $amap-lbs-skill 核验这份旅行计划中的地点、坐标、路线和天气行政区。"

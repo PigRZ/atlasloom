@@ -1,0 +1,229 @@
+# 旅行资料接口路径。
+/trips/{tripId}/{resource}:
+  parameters:
+  - $ref: ../components/common.yaml#/parameters/TripID
+  - $ref: ../components/common.yaml#/parameters/Resource
+  get:
+    operationId: listRecords
+    summary: List resource records
+    responses:
+      '200':
+        description: Resource collection
+        content:
+          application/json:
+            schema:
+              $ref: ../components/records.yaml#/schemas/RecordsResponse
+    tags:
+    - 旅行资料
+  post:
+    operationId: createRecord
+    summary: Create a resource record
+    parameters:
+    - $ref: ../components/common.yaml#/parameters/CSRF
+    - $ref: ../components/common.yaml#/parameters/Idempotency
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../components/records.yaml#/schemas/CreateRecord
+    responses:
+      '201':
+        description: Created
+        content:
+          application/json:
+            schema:
+              $ref: ../components/records.yaml#/schemas/RecordMutationResponse
+      '400':
+        $ref: ../components/common.yaml#/responses/Problem
+      '403':
+        $ref: ../components/common.yaml#/responses/Problem
+      '409':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 旅行资料
+/trips/{tripId}/{resource}/reorder:
+  parameters:
+  - $ref: ../components/common.yaml#/parameters/TripID
+  - $ref: ../components/common.yaml#/parameters/Resource
+  post:
+    operationId: reorderRecords
+    summary: Reorder resource records
+    description: Packing items are member-private and do not support a shared Trip order; that resource returns 400.
+    parameters:
+    - $ref: ../components/common.yaml#/parameters/CSRF
+    - $ref: ../components/common.yaml#/parameters/IfMatch
+    - $ref: ../components/common.yaml#/parameters/Idempotency
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../components/records.yaml#/schemas/ReorderRecords
+    responses:
+      '200':
+        description: Order updated with a complete snapshot summary
+        content:
+          application/json:
+            schema:
+              $ref: ../components/records.yaml#/schemas/SnapshotMutationResponse
+      '400':
+        $ref: ../components/common.yaml#/responses/Problem
+      '403':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 旅行资料
+/trips/{tripId}/days/{dayId}/places:
+  parameters:
+  - $ref: ../components/common.yaml#/parameters/TripID
+  - name: dayId
+    in: path
+    required: true
+    schema:
+      type: string
+  post:
+    operationId: createPlaceForDay
+    summary: Create a Place and append it to one Day atomically
+    parameters:
+    - $ref: ../components/common.yaml#/parameters/CSRF
+    - $ref: ../components/common.yaml#/parameters/IfMatch
+    - $ref: ../components/common.yaml#/parameters/Idempotency
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../components/records.yaml#/schemas/CreateRecord
+    responses:
+      '201':
+        description: Place created and Day updated with one complete snapshot
+        content:
+          application/json:
+            schema:
+              $ref: ../components/records.yaml#/schemas/DayPlaceMutationResponse
+      '403':
+        $ref: ../components/common.yaml#/responses/Problem
+      '409':
+        $ref: ../components/common.yaml#/responses/Problem
+      '412':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 旅行资料
+/trips/{tripId}/audit-logs:
+  parameters:
+  - $ref: ../components/common.yaml#/parameters/TripID
+  get:
+    operationId: listAuditLogs
+    summary: List visible trip operations
+    description: Returns only this Trip's operations. Packing-item operations are visible only to the item's owner.
+    responses:
+      '200':
+        description: Reverse chronological actor-visible operations with before and after values
+        content:
+          application/json:
+            schema:
+              $ref: ../components/records.yaml#/schemas/AuditLogsResponse
+    tags:
+    - 旅行资料
+/trips/{tripId}/members/{recordId}/deletion-impact:
+  parameters:
+  - $ref: ../components/common.yaml#/parameters/TripID
+  - name: recordId
+    in: path
+    required: true
+    schema:
+      type: string
+  get:
+    operationId: getTripMemberDeletionImpact
+    summary: List shared and privacy-safe dependencies that block removing a trip member
+    responses:
+      '200':
+        description: Member deletion impact with private packing details intentionally redacted
+        content:
+          application/json:
+            schema:
+              $ref: ../components/records.yaml#/schemas/TripMemberDeletionImpact
+      '403':
+        $ref: ../components/common.yaml#/responses/Problem
+      '404':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 旅行资料
+/trips/{tripId}/{resource}/{recordId}:
+  parameters:
+  - $ref: ../components/common.yaml#/parameters/TripID
+  - $ref: ../components/common.yaml#/parameters/Resource
+  - name: recordId
+    in: path
+    required: true
+    schema:
+      type: string
+  get:
+    operationId: getRecord
+    summary: Get a resource record
+    responses:
+      '200':
+        description: Resource record
+        content:
+          application/json:
+            schema:
+              $ref: ../components/records.yaml#/schemas/RecordResponse
+    tags:
+    - 旅行资料
+  patch:
+    operationId: updateRecord
+    summary: Update a resource record
+    parameters:
+    - $ref: ../components/common.yaml#/parameters/CSRF
+    - $ref: ../components/common.yaml#/parameters/IfMatch
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../components/records.yaml#/schemas/PatchRecord
+    responses:
+      '200':
+        description: Updated
+        content:
+          application/json:
+            schema:
+              $ref: ../components/records.yaml#/schemas/RecordMutationResponse
+      '400':
+        $ref: ../components/common.yaml#/responses/Problem
+      '403':
+        $ref: ../components/common.yaml#/responses/Problem
+      '409':
+        $ref: ../components/common.yaml#/responses/Problem
+      '412':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 旅行资料
+  delete:
+    operationId: deleteRecord
+    summary: Delete a resource record
+    parameters:
+    - $ref: ../components/common.yaml#/parameters/CSRF
+    - $ref: ../components/common.yaml#/parameters/IfMatch
+    - name: cascade
+      in: query
+      schema:
+        type: boolean
+        default: false
+      description: Confirm Place dependency cleanup, or deleting a Trip member together with that member's
+        private packing items and manual expenses when no non-cascadeable records still reference the member
+    responses:
+      '200':
+        description: Deleted
+        content:
+          application/json:
+            schema:
+              $ref: ../components/records.yaml#/schemas/RecordDeleteResponse
+      '403':
+        $ref: ../components/common.yaml#/responses/Problem
+      '409':
+        $ref: ../components/common.yaml#/responses/Problem
+      '412':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 旅行资料

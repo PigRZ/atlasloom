@@ -1,0 +1,535 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# 以完整快照编排真实攻略的拉取、比较、同步和恢复，不直接访问 MongoDB。
+
+project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$project_dir/scripts/lib/project-config.sh"
+load_project_config "$project_dir"
+
+api_bin="${TRAVEL_API_BIN:-$project_dir/scripts/travel-api}"
+state_root="${TRAVEL_DATA_STATE_DIR:-$project_dir/.local/travel-data}"
+temporary_paths=()
+
+cleanup_temporary_paths() {
+  local path
+  set +u
+  for path in "${temporary_paths[@]}"; do
+    if [[ -d "$path" ]]; then
+      rm -rf "$path"
+    else
+      rm -f "$path"
+    fi
+  done
+  set -u
+}
+trap cleanup_temporary_paths EXIT
+
+usage() {
+  cat <<'EOF'
+用法：./scripts/travel-data <命令> <trip-id> [参数]
+
+  pull-all
+  pull <trip-id>
+  status <trip-id>
+  diff <trip-id>
+  sync <trip-id> [--allow-delete]
+  restore-preview <trip-id> <snapshot-file>
+  restore <trip-id> <snapshot-file>
+
+pull 会创建：
+  .local/travel-data/<trip-id>/base.json
+  .local/travel-data/<trip-id>/working.json
+pull-all 还会保存：
+  .local/travel-data/library/base.json
+  .local/travel-data/<trip-id>/admin-backup
+  .local/travel-data/<trip-id>/readonly.json
+
+只编辑 working.json。sync 会先展示服务端预览，并要求交互确认。
+pull-all 会先检查权限和所有本地工作副本；owner 拉取可编辑快照，管理员对非 owner
+旅行只拉取完整备份及只读快照，不能 diff、sync 或 restore。
+EOF
+}
+
+die() {
+  echo "$*" >&2
+  exit 2
+}
+
+require_command() {
+  command -v "$1" >/dev/null 2>&1 || die "缺少命令：$1"
+}
+
+validate_trip_id() {
+  [[ "$1" =~ ^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$ ]] ||
+    die "trip-id 必须是小写字母、数字和连字符组成的安全 slug。"
+}
+
+run_travelctl() {
+  if [[ -n "${TRAVELCTL_BIN:-}" ]]; then
+    "$TRAVELCTL_BIN" "$@"
+  else
+    (cd "$project_dir/server" && go run ./cmd/travelctl "$@")
+  fi
+}
+
+workspace_for() {
+  printf '%s/%s' "$state_root" "$1"
+}
+
+workspace_mode_file() {
+  printf '%s/.access-mode' "$(workspace_for "$1")"
+}
+
+workspace_mode() {
+  local mode_file
+  mode_file="$(workspace_mode_file "$1")"
+  [[ -f "$mode_file" ]] ||
+    die "$1 的工作区缺少访问模式；请移走不完整目录后重新 pull。"
+  command tr -d '[:space:]' < "$mode_file"
+}
+
+write_workspace_mode() {
+  local workspace="$1"
+  local mode="$2"
+  local next="$workspace/.access-mode.next"
+  printf '%s\n' "$mode" > "$next"
+  chmod 600 "$next"
+  mv "$next" "$workspace/.access-mode"
+}
+
+require_owner_workspace() {
+  local trip_id="$1"
+  local mode
+  mode="$(workspace_mode "$trip_id")"
+  case "$mode" in
+    owner-snapshot)
+      ;;
+    admin-backup)
+      die "$trip_id 是管理员只读备份；不能 diff、sync 或 restore。请以旅行 owner 身份重新 pull。"
+      ;;
+    *)
+      die "$trip_id 的本地访问模式无效；请检查 $(workspace_mode_file "$trip_id")。"
+      ;;
+  esac
+}
+
+prepare_snapshot() {
+  local input="$1"
+  local output="$2"
+  local revision="${3:-}"
+  local args=(prepare-snapshot --input "$input" --output "$output")
+  if [[ -n "$revision" ]]; then
+    args+=(--revision "$revision")
+  fi
+  run_travelctl "${args[@]}"
+  chmod 600 "$output"
+}
+
+current_revision() {
+  local trip_id="$1"
+  "$api_bin" trips get "$trip_id" |
+    jq -er '.trip.version'
+}
+
+download_latest() {
+  local trip_id="$1"
+  local force="${2:-false}"
+  local workspace base working listing snapshot_id temp_dir downloaded
+  workspace="$(workspace_for "$trip_id")"
+  base="$workspace/base.json"
+  working="$workspace/working.json"
+
+  mkdir -p "$workspace"
+  chmod 700 "$state_root" "$workspace"
+
+  if [[ -e "$base" || -e "$working" ]]; then
+    [[ -f "$base" && -f "$working" ]] ||
+      die "$trip_id 的 owner 工作区不完整；请移走后重新 pull。"
+    require_owner_workspace "$trip_id"
+    if [[ "$force" != "true" ]] && ! cmp -s "$base" "$working"; then
+      die "working.json 有未同步变更；请先 diff/sync，或手工移走工作文件后再 pull。"
+    fi
+  fi
+
+  listing="$("$api_bin" snapshots list "$trip_id")"
+  snapshot_id="$(printf '%s' "$listing" | jq -er '.snapshots[0].id // empty')" ||
+    die "远端没有可下载的完整快照。"
+
+  temp_dir="$(mktemp -d "$workspace/pull.XXXXXX")"
+  temporary_paths+=("$temp_dir")
+  downloaded="$temp_dir/snapshot.json"
+  "$api_bin" snapshots download "$trip_id" "$snapshot_id" "$downloaded" >/dev/null
+  run_travelctl validate-snapshot --input "$downloaded"
+  jq -e --arg trip_id "$trip_id" '.trip.id == $trip_id' "$downloaded" >/dev/null ||
+    die "远端快照的 Trip ID 与请求不一致。"
+
+  cp "$downloaded" "$workspace/base.next"
+  cp "$downloaded" "$workspace/working.next"
+  chmod 600 "$workspace/base.next" "$workspace/working.next"
+  mv "$workspace/base.next" "$base"
+  mv "$workspace/working.next" "$working"
+  write_workspace_mode "$workspace" owner-snapshot
+  rm -f "$workspace/admin-backup" "$workspace/readonly.json"
+  rm -rf "$temp_dir"
+
+  printf '已拉取远端完整快照。\n'
+  printf '基准：%s\n' "$base"
+  printf '编辑：%s\n' "$working"
+}
+
+download_admin_backup() {
+  local trip_id="$1"
+  local workspace backup readonly temp_dir downloaded extracted
+  workspace="$(workspace_for "$trip_id")"
+  backup="$workspace/admin-backup"
+  readonly="$workspace/readonly.json"
+
+  mkdir -p "$workspace"
+  chmod 700 "$state_root" "$workspace"
+  temp_dir="$(mktemp -d "$workspace/pull-admin.XXXXXX")"
+  temporary_paths+=("$temp_dir")
+  downloaded="$temp_dir/admin-backup"
+  extracted="$temp_dir/readonly.json"
+
+  "$api_bin" trips backup "$trip_id" "$downloaded" >/dev/null
+  run_travelctl validate-trip-backup --input "$downloaded" >/dev/null
+  jq -e --arg trip_id "$trip_id" '
+    .kind == "my-travel-trip-backup"
+    and (.snapshot | type == "object")
+    and .snapshot.trip.id == $trip_id
+    and (.dependencies.members | type == "array")
+    and (.dependencies.tags | type == "array")
+  ' "$downloaded" >/dev/null || die "远端旅行完整备份格式无效。"
+  jq '.snapshot' "$downloaded" > "$extracted"
+  run_travelctl validate-snapshot --input "$extracted" >/dev/null
+
+  cp "$downloaded" "$workspace/admin-backup.next"
+  cp "$extracted" "$workspace/readonly.next"
+  chmod 600 "$workspace/admin-backup.next" "$workspace/readonly.next"
+  mv "$workspace/admin-backup.next" "$backup"
+  mv "$workspace/readonly.next" "$readonly"
+  write_workspace_mode "$workspace" admin-backup
+  rm -f "$workspace/base.json" "$workspace/working.json"
+  rm -rf "$temp_dir"
+
+  printf '已通过管理员完整备份保存只读副本。\n'
+  printf '备份：%s\n' "$backup"
+  printf '只读快照：%s\n' "$readonly"
+  printf '该工作区不能用于 diff、sync 或 restore。\n'
+}
+
+download_all() {
+  local trips_response session_response trip_entries trip_id role
+  local workspace base working is_admin
+  trips_response="$("$api_bin" trips list)"
+  printf '%s' "$trips_response" | jq -e '
+    (.trips | type == "array")
+    and all(.trips[];
+      (.id | type == "string")
+      and (
+        (.role == null)
+        or (.role == "owner")
+        or (.role == "editor")
+        or (.role == "viewer")
+      )
+    )
+  ' >/dev/null || die "远端旅行列表格式无效。"
+  session_response="$("$api_bin" session)"
+  is_admin="$(printf '%s' "$session_response" | jq -er '
+    if (.user.admin | type) == "boolean"
+    then (.user.admin | tostring)
+    else error("session response is missing boolean user.admin")
+    end
+  ')" || die "无法确认当前会话的管理员状态。"
+  trip_entries="$(printf '%s' "$trips_response" |
+    jq -r '.trips[] | [.id, (.role // "")] | @tsv')"
+
+  # 全部权限和本地脏状态都在任何文件替换之前检查，避免 mixed-role 账号留下部分拉取。
+  while IFS=$'\t' read -r trip_id role; do
+    [[ -n "$trip_id" ]] || continue
+    validate_trip_id "$trip_id"
+    if [[ "$role" != "owner" && "$is_admin" != "true" ]]; then
+      die "$trip_id 当前角色为 ${role:-无成员关系}，且当前账号不是管理员；pull-all 无法取得完整副本。请改用旅行 owner 或管理员账号。"
+    fi
+    workspace="$(workspace_for "$trip_id")"
+    base="$workspace/base.json"
+    working="$workspace/working.json"
+    if [[ -e "$base" || -e "$working" ]]; then
+      [[ -f "$base" && -f "$working" ]] ||
+        die "$trip_id 的 owner 工作区不完整；请先人工检查，pull-all 未替换任何本地文件。"
+      require_owner_workspace "$trip_id"
+    fi
+    if [[ -f "$base" && -f "$working" ]] && ! cmp -s "$base" "$working"; then
+      die "$trip_id 的 working.json 有未同步变更；pull-all 未替换任何本地文件。"
+    fi
+  done <<< "$trip_entries"
+
+  download_library
+  if [[ -z "$trip_entries" ]]; then
+    printf '远端没有可拉取的旅行。\n'
+    return
+  fi
+  while IFS=$'\t' read -r trip_id role; do
+    [[ -n "$trip_id" ]] || continue
+    printf '\n[%s]\n' "$trip_id"
+    if [[ "$role" == "owner" ]]; then
+      download_latest "$trip_id"
+    else
+      download_admin_backup "$trip_id"
+    fi
+  done <<< "$trip_entries"
+}
+
+download_library() {
+  local workspace target temporary
+  workspace="$state_root/library"
+  target="$workspace/base.json"
+  mkdir -p "$workspace"
+  chmod 700 "$state_root" "$workspace"
+  temporary="$(mktemp "$workspace/library.XXXXXX")"
+  temporary_paths+=("$temporary")
+  "$api_bin" library snapshot > "$temporary"
+  jq -e '
+    (.revision | type == "number")
+    and (.contentChecksum | type == "string")
+    and (.datasets.members | type == "array")
+    and (.datasets.tags | type == "array")
+  ' "$temporary" >/dev/null || die "远端基础库快照格式无效。"
+  chmod 600 "$temporary"
+  mv "$temporary" "$target"
+  printf '[基础资料]\n已拉取远端基础库快照：%s\n' "$target"
+}
+
+show_status() {
+  local trip_id="$1"
+  local workspace base working remote_revision local_revision checksum dirty mode
+  workspace="$(workspace_for "$trip_id")"
+  base="$workspace/base.json"
+  working="$workspace/working.json"
+  mode="$(workspace_mode "$trip_id")"
+  if [[ "$mode" == "admin-backup" ]]; then
+    [[ -f "$workspace/admin-backup" && -f "$workspace/readonly.json" ]] ||
+      die "管理员只读备份不完整：$trip_id"
+    local_revision="$(jq -er '.revision' "$workspace/readonly.json")"
+    checksum="$(jq -er '.contentChecksum' "$workspace/readonly.json")"
+    printf 'trip=%s\n' "$trip_id"
+    printf 'mode=admin-backup\n'
+    printf 'local_revision=%s\n' "$local_revision"
+    printf 'base_checksum=%s\n' "$checksum"
+    printf 'working_changed=not-applicable\n'
+    printf 'status=read-only-backup\n'
+    return
+  fi
+  require_owner_workspace "$trip_id"
+  [[ -f "$base" && -f "$working" ]] || die "尚未 pull：$trip_id"
+
+  local_revision="$(jq -er '.revision' "$base")"
+  checksum="$(jq -er '.contentChecksum' "$base")"
+  remote_revision="$(current_revision "$trip_id")"
+  dirty=no
+  cmp -s "$base" "$working" || dirty=yes
+
+  printf 'trip=%s\n' "$trip_id"
+  printf 'local_revision=%s\n' "$local_revision"
+  printf 'remote_revision=%s\n' "$remote_revision"
+  printf 'base_checksum=%s\n' "$checksum"
+  printf 'working_changed=%s\n' "$dirty"
+  if [[ "$local_revision" != "$remote_revision" ]]; then
+    printf 'status=remote-changed\n'
+  elif [[ "$dirty" == "yes" ]]; then
+    printf 'status=local-changed\n'
+  else
+    printf 'status=in-sync\n'
+  fi
+}
+
+show_diff() {
+  local trip_id="$1"
+  local workspace base working prepared
+  require_owner_workspace "$trip_id"
+  workspace="$(workspace_for "$trip_id")"
+  base="$workspace/base.json"
+  working="$workspace/working.json"
+  [[ -f "$base" && -f "$working" ]] || die "尚未 pull：$trip_id"
+  prepared="$(mktemp "$workspace/prepared.XXXXXX")"
+  rm -f "$prepared"
+  temporary_paths+=("$prepared")
+  prepare_snapshot "$working" "$prepared"
+  run_travelctl diff-snapshots --base "$base" --incoming "$prepared"
+  rm -f "$prepared"
+}
+
+confirm_apply() {
+  local label="$1"
+  local confirmation
+  [[ -t 0 ]] || die "$label 需要交互终端确认。"
+  read -r -p "输入 APPLY 确认${label}：" confirmation
+  [[ "$confirmation" == "APPLY" ]] || die "已取消。"
+}
+
+sync_working() {
+  local trip_id="$1"
+  local allow_delete="$2"
+  local workspace base working prepared base_revision checksum preview has_changes delete_count apply_args response
+  require_owner_workspace "$trip_id"
+  workspace="$(workspace_for "$trip_id")"
+  base="$workspace/base.json"
+  working="$workspace/working.json"
+  [[ -f "$base" && -f "$working" ]] || die "尚未 pull：$trip_id"
+
+  prepared="$(mktemp "$workspace/prepared.XXXXXX")"
+  rm -f "$prepared"
+  temporary_paths+=("$prepared")
+  prepare_snapshot "$working" "$prepared"
+  base_revision="$(jq -er '.revision' "$base")"
+  checksum="$(jq -er '.contentChecksum' "$prepared")"
+
+  preview="$("$api_bin" snapshot-imports preview "$trip_id" "$base_revision" "$prepared")"
+  printf '%s\n' "$preview" | jq .
+  [[ "$(printf '%s' "$preview" | jq -r '.valid')" == "true" ]] ||
+    die "服务端预览未通过，未写入任何数据。"
+
+  has_changes="$(printf '%s' "$preview" | jq -er '
+    if has("hasChanges") and (.hasChanges | type == "boolean")
+    then (.hasChanges | tostring)
+    else error("preview response is missing boolean hasChanges")
+    end
+  ')"
+  if [[ "$has_changes" == "false" ]]; then
+    # 服务端已确认 prepared 与当前聚合语义一致，此时覆盖 working 只会消除格式差异。
+    download_latest "$trip_id" true
+    printf '已同步，无需写入\n'
+    rm -f "$prepared"
+    return
+  fi
+
+  delete_count="$(printf '%s' "$preview" | jq -er '.deleteCount // 0')"
+  if ((delete_count > 0)) && [[ "$allow_delete" != "true" ]]; then
+    die "预览包含 $delete_count 条删除；确认语义后重新执行并追加 --allow-delete。"
+  fi
+
+  confirm_apply "以上攻略变更"
+  apply_args=(snapshot-imports apply "$trip_id" "$base_revision" "$prepared" "$checksum")
+  if [[ "$allow_delete" == "true" ]]; then
+    apply_args+=(--allow-delete)
+  fi
+  response="$("$api_bin" "${apply_args[@]}")"
+  printf '%s\n' "$response" | jq .
+
+  download_latest "$trip_id" true
+  rm -f "$prepared"
+}
+
+preview_file() {
+  local trip_id="$1"
+  local source="$2"
+  local workspace prepared revision
+  require_owner_workspace "$trip_id"
+  [[ -f "$source" ]] || die "快照文件不存在：$source"
+  workspace="$(workspace_for "$trip_id")"
+  mkdir -p "$workspace"
+  chmod 700 "$state_root" "$workspace"
+  prepared="$(mktemp "$workspace/restore.XXXXXX")"
+  rm -f "$prepared"
+  temporary_paths+=("$prepared")
+  revision="$(current_revision "$trip_id")"
+  prepare_snapshot "$source" "$prepared" "$revision"
+  "$api_bin" snapshot-imports preview "$trip_id" "$revision" "$prepared" | jq .
+  rm -f "$prepared"
+}
+
+restore_file() {
+  local trip_id="$1"
+  local source="$2"
+  local workspace prepared revision checksum preview has_changes response
+  require_owner_workspace "$trip_id"
+  [[ -f "$source" ]] || die "快照文件不存在：$source"
+  workspace="$(workspace_for "$trip_id")"
+  mkdir -p "$workspace"
+  chmod 700 "$state_root" "$workspace"
+  prepared="$(mktemp "$workspace/restore.XXXXXX")"
+  rm -f "$prepared"
+  temporary_paths+=("$prepared")
+  revision="$(current_revision "$trip_id")"
+  prepare_snapshot "$source" "$prepared" "$revision"
+  checksum="$(jq -er '.contentChecksum' "$prepared")"
+  preview="$("$api_bin" snapshot-imports preview "$trip_id" "$revision" "$prepared")"
+  printf '%s\n' "$preview" | jq .
+  [[ "$(printf '%s' "$preview" | jq -r '.valid')" == "true" ]] ||
+    die "恢复预览未通过，未写入任何数据。"
+  has_changes="$(printf '%s' "$preview" | jq -er '
+    if has("hasChanges") and (.hasChanges | type == "boolean")
+    then (.hasChanges | tostring)
+    else error("preview response is missing boolean hasChanges")
+    end
+  ')"
+  if [[ "$has_changes" == "false" ]]; then
+    printf '已同步，无需写入\n'
+    rm -f "$prepared"
+    return
+  fi
+  confirm_apply "该快照恢复（会以快照内容替换当前 Trip）"
+  response="$("$api_bin" snapshot-imports apply "$trip_id" "$revision" "$prepared" "$checksum" --allow-delete)"
+  printf '%s\n' "$response" | jq .
+  download_latest "$trip_id" true
+  rm -f "$prepared"
+}
+
+require_command jq
+[[ -x "$api_bin" ]] || die "travel-api 不可执行：$api_bin"
+
+command_name="${1:-help}"
+if [[ "$command_name" == "help" || "$command_name" == "-h" || "$command_name" == "--help" ]]; then
+  usage
+  exit 0
+fi
+
+if [[ "$command_name" == "pull-all" ]]; then
+  (($# == 1)) || die "pull-all 不接受其他参数。"
+  download_all
+  exit 0
+fi
+
+trip_id="${2:-}"
+[[ -n "$trip_id" ]] || {
+  usage >&2
+  exit 2
+}
+validate_trip_id "$trip_id"
+
+case "$command_name" in
+  pull)
+    (($# == 2)) || die "pull 只接受 trip-id。"
+    download_latest "$trip_id"
+    ;;
+  status)
+    (($# == 2)) || die "status 只接受 trip-id。"
+    show_status "$trip_id"
+    ;;
+  diff)
+    (($# == 2)) || die "diff 只接受 trip-id。"
+    show_diff "$trip_id"
+    ;;
+  sync)
+    (($# <= 3)) || die "sync 只接受可选的 --allow-delete。"
+    allow_delete=false
+    if [[ "${3:-}" == "--allow-delete" ]]; then
+      allow_delete=true
+    elif [[ -n "${3:-}" ]]; then
+      die "未知参数：$3"
+    fi
+    sync_working "$trip_id" "$allow_delete"
+    ;;
+  restore-preview)
+    (($# == 3)) || die "restore-preview 需要一个快照文件。"
+    preview_file "$trip_id" "$3"
+    ;;
+  restore)
+    (($# == 3)) || die "restore 需要一个快照文件。"
+    restore_file "$trip_id" "$3"
+    ;;
+  *)
+    die "未知命令：$command_name"
+    ;;
+esac

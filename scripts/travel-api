@@ -1,0 +1,812 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# API 运维入口只从项目配置解析目标地址，并安全复用会话 Cookie 与 CSRF。
+
+project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$project_dir/scripts/lib/project-config.sh"
+load_project_config "$project_dir"
+
+api_base="${API_BASE_URL:-}"
+state_dir="${API_STATE_DIR:-$project_dir/.local/travel-api}"
+cookie_file="$state_dir/cookies.txt"
+csrf_file="$state_dir/csrf-token"
+curl_bin="${TRAVEL_API_CURL_BIN:-curl}"
+
+usage() {
+  cat <<'EOF'
+用法：./scripts/travel-api <命令> [参数]
+
+目标与会话
+  health
+  auth bootstrap                   交互读取姓名、手机号、bootstrap token 和两次密码
+  auth create-user                 交互读取姓名、手机号、管理令牌和两次密码
+  auth login                       交互读取手机号和密码并保存本机会话
+  auth logout
+  session
+  profile get
+  profile update <version> <json|@file>
+
+旅行
+  trips list
+  trips create <json|@file> [idempotency-key]
+  trips get <trip-id>
+  trips update <trip-id> <version> <json|@file>
+  trips delete <trip-id> <version>
+  trips overview <trip-id>
+  trips backup <trip-id> [output-file]
+
+基础资料
+  library state
+  library presets [idempotency-key]
+  library list <members|tags>
+  library create <resource> <json|@file> [idempotency-key]
+  library get <resource> <record-id>
+  library impact <resource> <record-id>
+  library update <resource> <record-id> <version> <json|@file>
+  library delete <resource> <record-id> <version> [--delete-login-credential]
+  library snapshot
+
+旅行资源
+  records list <trip-id> <resource>
+  records create <trip-id> <resource> <json|@file> [idempotency-key]
+  records get <trip-id> <resource> <record-id>
+  records impact <trip-id> members <record-id>
+  records update <trip-id> <resource> <record-id> <version> <json|@file>
+  records delete <trip-id> <resource> <record-id> <version> [--cascade]
+  records reorder <trip-id> <resource> <base-revision> <json|@file> [idempotency-key]
+  audit list <trip-id>
+
+  外部信息与地图
+    weather <trip-id> <adcode>
+    map-config <trip-id>
+    route <trip-id> <drive|taxi|rideshare|walk|bicycle> <lng,lat> <lng,lat>
+    amap </v3/...?...>
+
+快照
+  snapshots list <trip-id>
+  snapshots download <trip-id> <snapshot-id> [output-file]
+  snapshots preview <trip-id> <snapshot-id>
+  snapshots restore <trip-id> <snapshot-id> <base-revision> --confirm [--allow-delete]
+  snapshot-imports preview <trip-id> <base-revision> <snapshot-file>
+  snapshot-imports apply <trip-id> <base-revision> <snapshot-file> <checksum> [--allow-delete] [idempotency-key]
+  trip-imports preview <backup-file>
+  trip-imports apply <request-json|@file> [idempotency-key]
+
+兜底
+  request <method> </api-relative-path> [json|@file]
+
+配置：
+  API_BASE_URL 必须写在 config/project.env，例如：
+  http://127.0.0.1:8502
+  https://travel.example.com/travel/api
+  仅在本地使用自签证书时设置 API_INSECURE_TLS=true。
+EOF
+}
+
+die() {
+  echo "$*" >&2
+  exit 2
+}
+
+need_count() {
+  local expected="$1"
+  shift
+  (($# >= expected)) || {
+    usage >&2
+    exit 2
+  }
+}
+
+ensure_target() {
+  [[ -n "$api_base" ]] || die "请先在 config/project.env 设置 API_BASE_URL。"
+  api_base="${api_base%/}"
+  [[ "$api_base" =~ ^https?:// ]] || die "API_BASE_URL 必须是 http:// 或 https:// 绝对地址。"
+  command -v "$curl_bin" >/dev/null 2>&1 || die "未找到 curl：$curl_bin"
+  mkdir -p "$state_dir"
+  chmod 700 "$state_dir"
+  if [[ ! -e "$cookie_file" ]]; then
+    : > "$cookie_file"
+    chmod 600 "$cookie_file"
+  fi
+}
+
+validate_segment() {
+  local label="$1"
+  local value="$2"
+  [[ "$value" =~ ^[A-Za-z0-9._~-]+$ ]] || die "$label 包含不能直接放入 URL 的字符：$value"
+}
+
+validate_resource() {
+  case "$1" in
+    days|places|segments|bookings|expenses|packing-items|research-evidence|members) ;;
+    *) die "未知资源：$1" ;;
+  esac
+}
+
+validate_library_resource() {
+  case "$1" in
+    members|tags) ;;
+    *) die "未知基础资料类型：$1" ;;
+  esac
+}
+
+body_from_arg() {
+  local input="$1"
+  if [[ "$input" == @* ]]; then
+    local file="${input#@}"
+    [[ -f "$file" ]] || die "请求体文件不存在：$file"
+    printf '%s' "$(command cat "$file")"
+    return
+  fi
+  printf '%s' "$input"
+}
+
+json_string() {
+  local value="$1"
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  value="${value//$'\n'/\\n}"
+  value="${value//$'\r'/\\r}"
+  value="${value//$'\t'/\\t}"
+  printf '"%s"' "$value"
+}
+
+read_secret() {
+  local prompt="$1"
+  local value
+  if [[ -t 0 ]]; then
+    read -r -s -p "$prompt" value
+    printf '\n' >&2
+  else
+    IFS= read -r value
+  fi
+  printf '%s' "$value"
+}
+
+read_value() {
+  local prompt="$1"
+  local value
+  if [[ -t 0 ]]; then
+    read -r -p "$prompt" value
+  else
+    IFS= read -r value
+  fi
+  printf '%s' "$value"
+}
+
+new_idempotency_key() {
+  if [[ -n "${API_IDEMPOTENCY_KEY:-}" ]]; then
+    printf '%s' "$API_IDEMPOTENCY_KEY"
+  elif command -v uuidgen >/dev/null 2>&1; then
+    uuidgen | tr '[:upper:]' '[:lower:]'
+  elif command -v openssl >/dev/null 2>&1; then
+    openssl rand -hex 16
+  else
+    die "无法生成幂等键；请安装 uuidgen/openssl 或设置 API_IDEMPOTENCY_KEY。"
+  fi
+}
+
+require_login() {
+  [[ -f "$cookie_file" && -s "$csrf_file" ]] ||
+    die "本机还没有 API 会话，请先运行：./scripts/travel-api auth login"
+}
+
+csrf_token() {
+  [[ -s "$csrf_file" ]] || die "缺少 CSRF 状态，请重新登录。"
+  command cat "$csrf_file"
+}
+
+perform_request() {
+  local method="$1"
+  local url="$2"
+  local body="${3:-}"
+  local needs_csrf="${4:-false}"
+  shift 4 || true
+  local -a args=(
+    --silent
+    --show-error
+    --fail-with-body
+    --globoff
+    --request "$method"
+    --url "$url"
+    --header "Accept: application/json"
+    --cookie "$cookie_file"
+    --cookie-jar "$cookie_file"
+  )
+  if [[ "${API_INSECURE_TLS:-false}" == "true" ]]; then
+    args+=(--insecure)
+  fi
+  if [[ -n "$body" ]]; then
+    # 正文经 stdin 传给 curl，避免密码或旅行数据短暂出现在进程参数中。
+    args+=(--header "Content-Type: application/json" --data-binary @-)
+  fi
+  if [[ "$needs_csrf" == "true" ]]; then
+    args+=(--header "X-CSRF-Token: $(csrf_token)")
+  fi
+  while (($# > 0)); do
+    args+=(--header "$1")
+    shift
+  done
+  if [[ -n "$body" ]]; then
+    printf '%s' "$body" | "$curl_bin" "${args[@]}"
+  else
+    "$curl_bin" "${args[@]}"
+  fi
+}
+
+request_api() {
+  local method="$1"
+  local path="$2"
+  local body="${3:-}"
+  local needs_csrf="${4:-false}"
+  shift 4 || true
+  local response
+  if response="$(perform_request "$method" "$api_base$path" "$body" "$needs_csrf" "$@")"; then
+    printf '%s\n' "$response"
+  else
+    local status=$?
+    [[ -z "$response" ]] || printf '%s\n' "$response"
+    return "$status"
+  fi
+  if [[ "$method" != "GET" && "$method" != "HEAD" ]] &&
+    grep -Eq '"(snapshot|before|after)"[[:space:]]*:[[:space:]]*\{[^}]*"mirrorState"[[:space:]]*:[[:space:]]*"pending"' \
+      <<<"$response"; then
+    printf '数据已保存，备份文件待重试\n' >&2
+  fi
+}
+
+login() {
+  local mobile="${API_MOBILE:-}"
+  [[ -n "$mobile" ]] || mobile="$(read_value "手机号：")"
+  [[ "$mobile" =~ ^[0-9]{11}$ ]] || die "手机号必须是 11 位数字。"
+  local password response csrf
+  password="$(read_secret "API 密码：")"
+  [[ -n "$password" ]] || die "密码不能为空。"
+  : > "$cookie_file"
+  chmod 600 "$cookie_file"
+  if ! response="$(request_api POST "/auth/login" \
+    "{\"mobile\":$(json_string "$mobile"),\"password\":$(json_string "$password")}" false)"; then
+    [[ -z "$response" ]] || printf '%s\n' "$response" >&2
+    return 1
+  fi
+  csrf="$(printf '%s' "$response" |
+    sed -n 's/.*"csrfToken"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+  [[ -n "$csrf" ]] || die "登录响应缺少 csrfToken，会话未保存。"
+  printf '%s' "$csrf" > "$csrf_file"
+  chmod 600 "$csrf_file"
+  printf '%s\n' "$response"
+}
+
+bootstrap() {
+  local display_name="${API_DISPLAY_NAME:-}"
+  local mobile="${API_MOBILE:-}"
+  [[ -n "$display_name" ]] || display_name="$(read_value "成员姓名：")"
+  [[ -n "$mobile" ]] || mobile="$(read_value "手机号：")"
+  [[ -n "$display_name" ]] || die "成员姓名不能为空。"
+  [[ "$mobile" =~ ^[0-9]{11}$ ]] || die "手机号必须是 11 位数字。"
+  local token="${BOOTSTRAP_TOKEN:-}"
+  local local_runtime_env="${TRAVEL_LOCAL_RUNTIME_ENV:-$project_dir/.local/app/runtime.env}"
+  local password confirmation
+  if [[ -z "$token" &&
+    "$api_base" =~ ^http://(127\.0\.0\.1|localhost)(:[0-9]+)?(/|$) &&
+    -f "$local_runtime_env" ]]; then
+    token="$(
+      (
+        unset BOOTSTRAP_TOKEN
+        load_env_file_defaults "$local_runtime_env"
+        printf '%s' "${BOOTSTRAP_TOKEN:-}"
+      )
+    )"
+  fi
+  if [[ -z "$token" ]]; then
+    token="$(read_secret "Bootstrap token：")"
+  fi
+  password="$(read_secret "新密码：")"
+  confirmation="$(read_secret "再次输入新密码：")"
+  [[ -n "$token" && -n "$password" ]] || die "Bootstrap token 和密码不能为空。"
+  [[ "$password" == "$confirmation" ]] || die "两次密码不一致。"
+  request_api POST "/auth/bootstrap" \
+    "{\"token\":$(json_string "$token"),\"displayName\":$(json_string "$display_name"),\"mobile\":$(json_string "$mobile"),\"password\":$(json_string "$password")}" \
+    false
+}
+
+create_user() {
+  local display_name="${API_DISPLAY_NAME:-}"
+  local mobile="${API_MOBILE:-}"
+  [[ -n "$display_name" ]] || display_name="$(read_value "成员姓名：")"
+  [[ -n "$mobile" ]] || mobile="$(read_value "手机号：")"
+  [[ -n "$display_name" ]] || die "成员姓名不能为空。"
+  [[ "$mobile" =~ ^[0-9]{11}$ ]] || die "手机号必须是 11 位数字。"
+  local token="${ADMIN_PROVISION_TOKEN:-}"
+  local password confirmation
+  if [[ -z "$token" ]]; then
+    token="$(read_secret "用户创建令牌：")"
+  fi
+  password="$(read_secret "新用户密码：")"
+  confirmation="$(read_secret "再次输入新用户密码：")"
+  [[ -n "$token" && -n "$password" ]] || die "用户创建令牌和密码不能为空。"
+  [[ "$password" == "$confirmation" ]] || die "两次密码不一致。"
+  request_api POST "/auth/users" \
+    "{\"token\":$(json_string "$token"),\"displayName\":$(json_string "$display_name"),\"mobile\":$(json_string "$mobile"),\"password\":$(json_string "$password")}" \
+    false
+}
+
+download_snapshot() {
+  local trip_id="$1"
+  local snapshot_id="$2"
+  local output="${3:-$state_dir/$snapshot_id.json}"
+  local output_dir temp
+  output_dir="$(dirname "$output")"
+  [[ -d "$output_dir" ]] || die "输出目录不存在：$output_dir"
+  [[ ! -e "$output" ]] || die "输出文件已存在，不会覆盖：$output"
+  temp="$(mktemp "$output.XXXXXX")"
+  chmod 600 "$temp"
+  local -a args=(
+    --silent
+    --show-error
+    --fail-with-body
+    --globoff
+    --request GET
+    --url "$api_base/trips/$trip_id/snapshots/$snapshot_id"
+    --header "Accept: application/json"
+    --cookie "$cookie_file"
+    --cookie-jar "$cookie_file"
+    --output "$temp"
+  )
+  if [[ "${API_INSECURE_TLS:-false}" == "true" ]]; then
+    args+=(--insecure)
+  fi
+  if "$curl_bin" "${args[@]}"; then
+    mv "$temp" "$output"
+    printf '快照已保存：%s\n' "$output"
+  else
+    rm -f "$temp"
+    return 1
+  fi
+}
+
+download_trip_backup() {
+  local trip_id="$1"
+  local output="${2:-$state_dir/$trip_id-backup.json}"
+  local output_dir temp
+  output_dir="$(dirname "$output")"
+  [[ -d "$output_dir" ]] || die "输出目录不存在：$output_dir"
+  [[ ! -e "$output" ]] || die "输出文件已存在，不会覆盖：$output"
+  temp="$(mktemp "$output.XXXXXX")"
+  chmod 600 "$temp"
+  local -a args=(
+    --silent
+    --show-error
+    --fail-with-body
+    --globoff
+    --request GET
+    --url "$api_base/trips/$trip_id/backup"
+    --header "Accept: application/json"
+    --cookie "$cookie_file"
+    --cookie-jar "$cookie_file"
+    --output "$temp"
+  )
+  if [[ "${API_INSECURE_TLS:-false}" == "true" ]]; then
+    args+=(--insecure)
+  fi
+  if "$curl_bin" "${args[@]}"; then
+    mv "$temp" "$output"
+    printf '旅行备份已保存：%s\n' "$output"
+  else
+    rm -f "$temp"
+    return 1
+  fi
+}
+
+ensure_target
+if [[ "$api_base" =~ ^(https?://[^/]+) ]]; then
+  api_origin="${BASH_REMATCH[1]}"
+else
+  die "无法从 API_BASE_URL 解析站点地址。"
+fi
+
+command_name="${1:-help}"
+shift || true
+
+case "$command_name" in
+  help|-h|--help)
+    usage
+    ;;
+  health)
+    need_count 0 "$@"
+    perform_request GET "$api_base/healthz" "" false
+    ;;
+  auth)
+    action="${1:-}"
+    shift || true
+    case "$action" in
+      bootstrap)
+        need_count 0 "$@"
+        bootstrap
+        ;;
+      create-user)
+        need_count 0 "$@"
+        create_user
+        ;;
+      login)
+        need_count 0 "$@"
+        login
+        ;;
+      logout)
+        need_count 0 "$@"
+        require_login
+        request_api POST "/auth/logout" "" true
+        rm -f "$cookie_file" "$csrf_file"
+        ;;
+      *) die "未知 auth 命令：$action" ;;
+    esac
+    ;;
+  session)
+    need_count 0 "$@"
+    require_login
+    request_api GET "/session" "" false
+    ;;
+  profile)
+    action="${1:-}"
+    shift || true
+    require_login
+    case "$action" in
+      get)
+        need_count 0 "$@"
+        request_api GET "/profile" "" false
+        ;;
+      update)
+        need_count 2 "$@"
+        request_api PATCH "/profile" "$(body_from_arg "$2")" true "If-Match: $1"
+        ;;
+      *) die "未知 profile 命令：$action" ;;
+    esac
+    ;;
+  trips)
+    action="${1:-}"
+    shift || true
+    require_login
+    case "$action" in
+      list)
+        need_count 0 "$@"
+        request_api GET "/trips" "" false
+        ;;
+      create)
+        need_count 1 "$@"
+        request_api POST "/trips" "$(body_from_arg "$1")" true \
+          "Idempotency-Key: ${2:-$(new_idempotency_key)}"
+        ;;
+      get)
+        need_count 1 "$@"
+        validate_segment "trip-id" "$1"
+        request_api GET "/trips/$1" "" false
+        ;;
+      update)
+        need_count 3 "$@"
+        validate_segment "trip-id" "$1"
+        request_api PATCH "/trips/$1" "$(body_from_arg "$3")" true "If-Match: $2"
+        ;;
+      delete)
+        need_count 2 "$@"
+        validate_segment "trip-id" "$1"
+        [[ "$2" =~ ^[1-9][0-9]*$ ]] || die "version 必须是正整数。"
+        request_api DELETE "/trips/$1" "" true "If-Match: $2"
+        ;;
+      overview)
+        need_count 1 "$@"
+        validate_segment "trip-id" "$1"
+        request_api GET "/trips/$1/overview" "" false
+        ;;
+      backup)
+        need_count 1 "$@"
+        validate_segment "trip-id" "$1"
+        download_trip_backup "$1" "${2:-}"
+        ;;
+      *) die "未知 trips 命令：$action" ;;
+    esac
+    ;;
+  library)
+    action="${1:-}"
+    shift || true
+    require_login
+    case "$action" in
+      state)
+        need_count 0 "$@"
+        request_api GET "/library" "" false
+        ;;
+      snapshot)
+        need_count 0 "$@"
+        request_api GET "/library/snapshot" "" false
+        ;;
+      presets)
+        need_count 0 "$@"
+        request_api POST "/library/tags/presets" "" true \
+          "Idempotency-Key: ${1:-$(new_idempotency_key)}"
+        ;;
+      list)
+        need_count 1 "$@"
+        validate_library_resource "$1"
+        request_api GET "/library/$1" "" false
+        ;;
+      create)
+        need_count 2 "$@"
+        validate_library_resource "$1"
+        request_api POST "/library/$1" "$(body_from_arg "$2")" true \
+          "Idempotency-Key: ${3:-$(new_idempotency_key)}"
+        ;;
+      get)
+        need_count 2 "$@"
+        validate_library_resource "$1"
+        validate_segment "record-id" "$2"
+        request_api GET "/library/$1/$2" "" false
+        ;;
+      impact)
+        need_count 2 "$@"
+        validate_library_resource "$1"
+        validate_segment "record-id" "$2"
+        request_api GET "/library/$1/$2/deletion-impact" "" false
+        ;;
+      update)
+        need_count 4 "$@"
+        validate_library_resource "$1"
+        validate_segment "record-id" "$2"
+        request_api PATCH "/library/$1/$2" "$(body_from_arg "$4")" true \
+          "If-Match: $3"
+        ;;
+      delete)
+        need_count 3 "$@"
+        validate_library_resource "$1"
+        validate_segment "record-id" "$2"
+        delete_path="/library/$1/$2"
+        case "${4:-}" in
+          "")
+            ;;
+          --delete-login-credential)
+            [[ "$1" == "members" ]] ||
+              die "--delete-login-credential 仅适用于基础成员。"
+            delete_path+="?deleteLoginCredential=true"
+            ;;
+          *)
+            die "library delete 只接受 --delete-login-credential。"
+            ;;
+        esac
+        request_api DELETE "$delete_path" "" true "If-Match: $3"
+        ;;
+      *) die "未知 library 命令：$action" ;;
+    esac
+    ;;
+  records)
+    action="${1:-}"
+    shift || true
+    need_count 2 "$@"
+    trip_id="$1"
+    resource="$2"
+    validate_segment "trip-id" "$trip_id"
+    validate_resource "$resource"
+    shift 2
+    require_login
+    case "$action" in
+      list)
+        need_count 0 "$@"
+        request_api GET "/trips/$trip_id/$resource" "" false
+        ;;
+      create)
+        need_count 1 "$@"
+        request_api POST "/trips/$trip_id/$resource" "$(body_from_arg "$1")" true \
+          "Idempotency-Key: ${2:-$(new_idempotency_key)}"
+        ;;
+      get)
+        need_count 1 "$@"
+        validate_segment "record-id" "$1"
+        request_api GET "/trips/$trip_id/$resource/$1" "" false
+        ;;
+      impact)
+        need_count 1 "$@"
+        [[ "$resource" == "members" ]] ||
+          die "当前只有旅行成员提供删除影响检查。"
+        validate_segment "record-id" "$1"
+        request_api GET "/trips/$trip_id/members/$1/deletion-impact" "" false
+        ;;
+      update)
+        need_count 3 "$@"
+        validate_segment "record-id" "$1"
+        request_api PATCH "/trips/$trip_id/$resource/$1" "$(body_from_arg "$3")" true \
+          "If-Match: $2"
+        ;;
+      delete)
+        need_count 2 "$@"
+        validate_segment "record-id" "$1"
+        delete_path="/trips/$trip_id/$resource/$1"
+        case "${3:-}" in
+          "")
+            ;;
+          --cascade)
+            [[ "$resource" == "places" || "$resource" == "members" ]] ||
+              die "--cascade 仅适用于地点或旅行成员。"
+            delete_path+="?cascade=true"
+            ;;
+          *)
+            die "records delete 只接受 --cascade。"
+            ;;
+        esac
+        request_api DELETE "$delete_path" "" true "If-Match: $2"
+        ;;
+      reorder)
+        need_count 2 "$@"
+        [[ "$1" =~ ^[0-9]+$ ]] || die "base-revision 必须是非负整数。"
+        request_api POST "/trips/$trip_id/$resource/reorder" "$(body_from_arg "$2")" true \
+          "If-Match: $1" \
+          "Idempotency-Key: ${3:-$(new_idempotency_key)}"
+        ;;
+      *) die "未知 records 命令：$action" ;;
+    esac
+    ;;
+  audit)
+    action="${1:-}"
+    shift || true
+    [[ "$action" == "list" ]] || die "未知 audit 命令：$action"
+    need_count 1 "$@"
+    validate_segment "trip-id" "$1"
+    require_login
+    request_api GET "/trips/$1/audit-logs" "" false
+    ;;
+  weather)
+    need_count 2 "$@"
+    validate_segment "trip-id" "$1"
+    [[ "$2" =~ ^[0-9]{6}$ ]] || die "adcode 必须是六位数字。"
+    require_login
+    request_api GET "/trips/$1/weather?adcode=$2" "" false
+    ;;
+  map-config)
+    need_count 1 "$@"
+    validate_segment "trip-id" "$1"
+    require_login
+    request_api GET "/trips/$1/map-config" "" false
+    ;;
+  route)
+    need_count 4 "$@"
+    validate_segment "trip-id" "$1"
+    [[ "$2" =~ ^(drive|taxi|rideshare|walk|bicycle)$ ]] ||
+      die "导航方式必须是 drive、taxi、rideshare、walk 或 bicycle。"
+    coordinate_pattern='^-?[0-9]+([.][0-9]+)?,-?[0-9]+([.][0-9]+)?$'
+    [[ "$3" =~ $coordinate_pattern ]] || die "导航起点必须是 lng,lat。"
+    [[ "$4" =~ $coordinate_pattern ]] || die "导航终点必须是 lng,lat。"
+    require_login
+    request_api GET "/trips/$1/route?mode=$2&origin=$3&destination=$4" "" false
+    ;;
+  amap)
+    need_count 1 "$@"
+    amap_path="${1%%\?*}"
+    case "$amap_path" in
+      /v3/direction/driving|\
+      /v3/direction/walking|\
+      /v3/direction/transit/integrated|\
+      /v5/direction/driving|\
+      /v5/direction/walking|\
+      /v3/place/text|\
+      /v3/geocode/regeo) ;;
+      *) die "高德代理路径不在允许列表中。" ;;
+    esac
+    require_login
+    perform_request GET "$api_origin/_AMapService$1" "" false
+    ;;
+  snapshots)
+    action="${1:-}"
+    shift || true
+    need_count 1 "$@"
+    trip_id="$1"
+    validate_segment "trip-id" "$trip_id"
+    shift
+    require_login
+    case "$action" in
+      list)
+        need_count 0 "$@"
+        request_api GET "/trips/$trip_id/snapshots" "" false
+        ;;
+      download)
+        need_count 1 "$@"
+        validate_segment "snapshot-id" "$1"
+        download_snapshot "$trip_id" "$1" "${2:-}"
+        ;;
+      preview)
+        need_count 1 "$@"
+        validate_segment "snapshot-id" "$1"
+        request_api GET "/trips/$trip_id/snapshots/$1/restore-preview" "" false
+        ;;
+      restore)
+        need_count 3 "$@"
+        (($# <= 4)) || die "恢复快照只接受 --confirm 和可选的 --allow-delete。"
+        validate_segment "snapshot-id" "$1"
+        [[ "$2" =~ ^[0-9]+$ ]] || die "base-revision 必须是非负整数。"
+        [[ "$3" == "--confirm" ]] || die "恢复快照必须显式追加 --confirm。"
+        allow_delete=false
+        if [[ "${4:-}" == "--allow-delete" ]]; then
+          allow_delete=true
+        elif [[ -n "${4:-}" ]]; then
+          die "未知恢复选项：$4"
+        fi
+        request_api POST "/trips/$trip_id/snapshots/$1/restore" \
+          "{\"confirmSnapshotId\":$(json_string "$1"),\"allowDelete\":$allow_delete}" true \
+          "If-Match: $2"
+        ;;
+      *) die "未知 snapshots 命令：$action" ;;
+    esac
+    ;;
+  snapshot-imports)
+    action="${1:-}"
+    shift || true
+    need_count 3 "$@"
+    trip_id="$1"
+    base_revision="$2"
+    snapshot_file="$3"
+    validate_segment "trip-id" "$trip_id"
+    [[ "$base_revision" =~ ^[0-9]+$ ]] || die "base-revision 必须是非负整数。"
+    [[ -f "$snapshot_file" ]] || die "快照文件不存在：$snapshot_file"
+    snapshot_json="$(body_from_arg "@$snapshot_file")"
+    shift 3
+    require_login
+    case "$action" in
+      preview)
+        need_count 0 "$@"
+        request_api POST "/trips/$trip_id/snapshot-imports/preview" \
+          "{\"snapshot\":$snapshot_json}" true \
+          "If-Match: $base_revision"
+        ;;
+      apply)
+        need_count 1 "$@"
+        checksum="$1"
+        shift
+        [[ "$checksum" =~ ^[a-fA-F0-9]{64}$ ]] || die "checksum 必须是 64 位 SHA-256。"
+        allow_delete=false
+        if [[ "${1:-}" == "--allow-delete" ]]; then
+          allow_delete=true
+          shift
+        fi
+        need_count 0 "$@"
+        request_api POST "/trips/$trip_id/snapshot-imports/apply" \
+          "{\"snapshot\":$snapshot_json,\"confirmChecksum\":$(json_string "$checksum"),\"allowDelete\":$allow_delete}" \
+          true \
+          "If-Match: $base_revision" \
+          "Idempotency-Key: ${1:-$(new_idempotency_key)}"
+        ;;
+      *) die "未知 snapshot-imports 命令：$action" ;;
+    esac
+    ;;
+  trip-imports)
+    action="${1:-}"
+    shift || true
+    require_login
+    case "$action" in
+      preview)
+        need_count 1 "$@"
+        [[ -f "$1" ]] || die "旅行备份文件不存在：$1"
+        backup_json="$(body_from_arg "@$1")"
+        request_api POST "/trip-imports/preview" \
+          "{\"backup\":$backup_json}" true
+        ;;
+      apply)
+        need_count 1 "$@"
+        request_api POST "/trip-imports/apply" "$(body_from_arg "$1")" true \
+          "Idempotency-Key: ${2:-$(new_idempotency_key)}"
+        ;;
+      *) die "未知 trip-imports 命令：$action" ;;
+    esac
+    ;;
+  request)
+    need_count 2 "$@"
+    method="$(printf '%s' "$1" | tr '[:lower:]' '[:upper:]')"
+    path="$2"
+    body="${3:-}"
+    [[ "$path" == /* ]] || die "相对路径必须以 / 开头。"
+    require_login
+    needs_csrf=false
+    if [[ "$method" != "GET" && "$method" != "HEAD" ]]; then
+      needs_csrf=true
+    fi
+    request_api "$method" "$path" "${body:+$(body_from_arg "$body")}" "$needs_csrf"
+    ;;
+  *)
+    die "未知命令：$command_name"
+    ;;
+esac

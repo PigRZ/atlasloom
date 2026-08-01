@@ -1,0 +1,14 @@
+# 构建上下文排除版本历史、私有配置、运行数据和本地依赖。
+.git
+.gitignore
+.env
+.env.local
+config/project.env
+.local
+.deploy
+.deploy.env
+backups
+snapshots
+web/dist
+web/node_modules
+*.md

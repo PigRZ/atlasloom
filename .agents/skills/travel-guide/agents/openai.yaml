@@ -1,0 +1,4 @@
+interface:
+  display_name: "AI 旅行攻略与初始化"
+  short_description: "调研并生成可验证攻略，再安全初始化到 my-travel"
+  default_prompt: "使用 $travel-guide 为我的目的地生成攻略，并准备可导入 my-travel 的旅行。"

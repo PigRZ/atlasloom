@@ -1,0 +1,600 @@
+# 旅行资料数据结构。
+schemas:
+  ResourceName:
+    type: string
+    enum:
+    - days
+    - places
+    - segments
+    - bookings
+    - expenses
+    - packing-items
+    - research-evidence
+    - members
+  CreateRecord:
+    type: object
+    additionalProperties: false
+    required:
+    - recordKey
+    - data
+    properties:
+      recordKey:
+        type: string
+        maxLength: 128
+        pattern: ^[A-Za-z0-9](?:[A-Za-z0-9_:-]|\.[A-Za-z0-9_:-])*\.?$
+      data:
+        $ref: '#/schemas/RecordInputData'
+  PatchRecord:
+    type: object
+    additionalProperties: false
+    required:
+    - data
+    properties:
+      data:
+        $ref: '#/schemas/RecordInputData'
+  ReorderRecords:
+    type: object
+    additionalProperties: false
+    required:
+    - groupKey
+    - ids
+    properties:
+      groupKey:
+        type: string
+      ids:
+        type: array
+        items:
+          type: string
+        uniqueItems: true
+  DayPlaceEntry:
+    type: object
+    additionalProperties: false
+    required:
+    - placeId
+    properties:
+      placeId:
+        type: string
+      arrivalTime:
+        type: string
+        pattern: ^\d{2}:\d{2}$
+      departureTime:
+        type: string
+        pattern: ^\d{2}:\d{2}$
+      additionalInfo:
+        type: string
+  DayData:
+    type: object
+    additionalProperties: false
+    required:
+    - title
+    - date
+    properties:
+      title:
+        type: string
+      date:
+        type: string
+        format: date
+      placeEntries:
+        type: array
+        items:
+          $ref: '#/schemas/DayPlaceEntry'
+        uniqueItems: true
+      additionalInfo:
+        type: string
+  PlaceData:
+    type: object
+    additionalProperties: false
+    required:
+    - name
+    - type
+    properties:
+      name:
+        type: string
+      type:
+        type: string
+        description: ID of a tag whose category is place-type
+      address:
+        type: string
+      region:
+        type: string
+      latitude:
+        type: number
+        minimum: -90
+        maximum: 90
+      longitude:
+        type: number
+        minimum: -180
+        maximum: 180
+      weatherAdcode:
+        type: string
+        pattern: ^\d{6}$
+      navigationURL:
+        type: string
+        format: uri
+      openingHours:
+        type: string
+      recommendedTicketPlatform:
+        type: string
+  SegmentData:
+    type: object
+    additionalProperties: false
+    required:
+    - dayId
+    - fromPlaceId
+    - toPlaceId
+    - mode
+    properties:
+      dayId:
+        type: string
+      fromPlaceId:
+        type: string
+      toPlaceId:
+        type: string
+      mode:
+        type: string
+        enum:
+        - walk
+        - drive
+        - taxi
+        - rideshare
+        - public_transit
+        - train
+        - flight
+        - shuttle
+        - scenic_bus
+        - ferry
+        - bicycle
+        - other
+      durationMinutes:
+        type: integer
+        minimum: 0
+      distanceMeters:
+        type: integer
+        minimum: 0
+      departureTime:
+        type: string
+        pattern: ^\d{2}:\d{2}$
+      navigationURL:
+        type: string
+        format: uri
+      additionalInfo:
+        type: string
+  BookingData:
+    type: object
+    additionalProperties: false
+    required:
+    - item
+    properties:
+      item:
+        type: string
+      type:
+        type: string
+        description: ID of a tag whose category is expense-type; shared with the generated expense
+      bookerMemberId:
+        type: string
+        description: ID of a base-library member selected by this trip; copied to the generated expense payer
+      placeId:
+        type: string
+      platformId:
+        type: string
+        description: ID of a tag whose category is platform-type
+      dateTime:
+        type: string
+        description: Local date and minute selected by the user
+      status:
+        type: string
+        enum:
+        - needs_booking
+        - booked
+        - cancelled
+      link:
+        type: string
+        format: uri
+      notes:
+        type: string
+  BookingInputData:
+    type: object
+    additionalProperties: false
+    required:
+    - item
+    - type
+    - bookerMemberId
+    properties:
+      item:
+        type: string
+      type:
+        type: string
+        description: ID of a tag whose category is expense-type
+      bookerMemberId:
+        type: string
+        description: ID of a base-library member selected by this trip
+      placeId:
+        type: string
+      platformId:
+        type: string
+        description: ID of a tag whose category is platform-type
+      dateTime:
+        type: string
+        description: Local date and minute selected by the user
+      status:
+        type: string
+        enum:
+        - needs_booking
+        - booked
+        - cancelled
+      link:
+        type: string
+        format: uri
+      notes:
+        type: string
+  ExpenseData:
+    type: object
+    additionalProperties: false
+    required:
+    - item
+    properties:
+      item:
+        type: string
+      occurredAt:
+        type: string
+        description: Local date and minute
+      type:
+        type: string
+        description: ID of a tag whose category is expense-type
+      amountMinor:
+        type: integer
+        minimum: 1
+      payerMemberId:
+        type: string
+      splitMode:
+        type: string
+        enum:
+        - selected
+        - all
+      splitMemberIds:
+        type: array
+        items:
+          type: string
+      bookingRecordId:
+        type: string
+      notes:
+        type: string
+  PackingItemData:
+    type: object
+    additionalProperties: false
+    required:
+    - item
+    - ownerMemberId
+    properties:
+      item:
+        type: string
+      category:
+        type: string
+        enum:
+        - clothing
+        - document
+        - medicine
+        - electronics
+        - daily_use
+        - supply
+        - gear
+        - vehicle
+        - other
+      dayIds:
+        type: array
+        items:
+          type: string
+      ownerMemberId:
+        type: string
+        description: Authenticated member assigned by the server
+      quantity:
+        type: integer
+        minimum: 0
+      packed:
+        type: boolean
+      notes:
+        type: string
+  PackingItemInputData:
+    type: object
+    additionalProperties: false
+    required:
+    - item
+    properties:
+      item:
+        type: string
+      category:
+        type: string
+        enum:
+        - clothing
+        - document
+        - medicine
+        - electronics
+        - daily_use
+        - supply
+        - gear
+        - vehicle
+        - other
+      dayIds:
+        type: array
+        items:
+          type: string
+      quantity:
+        type: integer
+        minimum: 0
+      packed:
+        type: boolean
+      notes:
+        type: string
+  ResearchEvidenceData:
+    type: object
+    additionalProperties: false
+    required:
+    - title
+    properties:
+      title:
+        type: string
+      content:
+        type: string
+      platformId:
+        type: string
+        description: ID of a tag whose category is platform-type
+      recordedByMemberId:
+        type: string
+        description: ID of a base-library member selected by this trip
+      dayIds:
+        type: array
+        items:
+          type: string
+      placeId:
+        type: string
+  MemberData:
+    type: object
+    additionalProperties: false
+    required:
+    - memberId
+    properties:
+      memberId:
+        type: string
+      role:
+        type: string
+      note:
+        type: string
+  RecordData:
+    description: 具体类型由请求路径或 Record.resource 决定。
+    anyOf:
+    - $ref: '#/schemas/DayData'
+    - $ref: '#/schemas/PlaceData'
+    - $ref: '#/schemas/SegmentData'
+    - $ref: '#/schemas/BookingData'
+    - $ref: '#/schemas/ExpenseData'
+    - $ref: '#/schemas/PackingItemData'
+    - $ref: '#/schemas/ResearchEvidenceData'
+    - $ref: '#/schemas/MemberData'
+  RecordInputData:
+    description: 具体类型由请求路径决定；物品 owner 由服务端从会话注入。
+    anyOf:
+    - $ref: '#/schemas/DayData'
+    - $ref: '#/schemas/PlaceData'
+    - $ref: '#/schemas/SegmentData'
+    - $ref: '#/schemas/BookingInputData'
+    - $ref: '#/schemas/ExpenseData'
+    - $ref: '#/schemas/PackingItemInputData'
+    - $ref: '#/schemas/ResearchEvidenceData'
+    - $ref: '#/schemas/MemberData'
+  Record:
+    type: object
+    additionalProperties: false
+    required:
+    - id
+    - tripId
+    - resource
+    - recordKey
+    - position
+    - version
+    - data
+    - createdByMemberId
+    - updatedByMemberId
+    - createdAt
+    - updatedAt
+    properties:
+      id:
+        type: string
+        maxLength: 128
+        pattern: ^[A-Za-z0-9](?:[A-Za-z0-9_:-]|\.[A-Za-z0-9_:-])*\.?$
+      tripId:
+        type: string
+      resource:
+        $ref: '#/schemas/ResourceName'
+      recordKey:
+        type: string
+        maxLength: 128
+        pattern: ^[A-Za-z0-9](?:[A-Za-z0-9_:-]|\.[A-Za-z0-9_:-])*\.?$
+      position:
+        type: integer
+        minimum: 0
+      version:
+        type: integer
+        minimum: 1
+      data:
+        $ref: '#/schemas/RecordData'
+      createdByMemberId:
+        type: string
+        maxLength: 128
+        pattern: ^[A-Za-z0-9](?:[A-Za-z0-9_:-]|\.[A-Za-z0-9_:-])*\.?$
+      updatedByMemberId:
+        type: string
+        maxLength: 128
+        pattern: ^[A-Za-z0-9](?:[A-Za-z0-9_:-]|\.[A-Za-z0-9_:-])*\.?$
+      createdAt:
+        type: string
+        format: date-time
+      updatedAt:
+        type: string
+        format: date-time
+  AuditLog:
+    type: object
+    additionalProperties: false
+    required:
+    - id
+    - memberId
+    - module
+    - action
+    - createdAt
+    properties:
+      id:
+        type: string
+      tripId:
+        type: string
+      memberId:
+        type: string
+      module:
+        type: string
+      action:
+        type: string
+      resource:
+        type: string
+      recordId:
+        type: string
+      recordLabel:
+        type: string
+      before:
+        type: object
+        additionalProperties: true
+      after:
+        type: object
+        additionalProperties: true
+      createdAt:
+        type: string
+        format: date-time
+  RecordsResponse:
+    type: object
+    additionalProperties: false
+    required:
+    - records
+    properties:
+      records:
+        type: array
+        items:
+          $ref: '#/schemas/Record'
+  RecordResponse:
+    type: object
+    additionalProperties: false
+    required:
+    - record
+    properties:
+      record:
+        $ref: '#/schemas/Record'
+  RecordMutationResponse:
+    type: object
+    additionalProperties: false
+    required:
+    - record
+    - snapshot
+    properties:
+      record:
+        $ref: '#/schemas/Record'
+      snapshot:
+        $ref: ./snapshots.yaml#/schemas/SnapshotSummary
+      replayed:
+        type: boolean
+  DayPlaceMutationResponse:
+    type: object
+    additionalProperties: false
+    required:
+    - place
+    - day
+    - snapshot
+    - replayed
+    properties:
+      place:
+        $ref: '#/schemas/Record'
+      day:
+        $ref: '#/schemas/Record'
+      snapshot:
+        $ref: ./snapshots.yaml#/schemas/SnapshotSummary
+      replayed:
+        type: boolean
+  RecordDeleteResponse:
+    type: object
+    additionalProperties: false
+    required:
+    - deleted
+    - snapshot
+    properties:
+      deleted:
+        type: boolean
+        const: true
+      snapshot:
+        $ref: ./snapshots.yaml#/schemas/SnapshotSummary
+  TripMemberReference:
+    type: object
+    additionalProperties: false
+    required:
+    - resource
+    - recordId
+    - label
+    - relations
+    properties:
+      resource:
+        type: string
+        enum:
+        - bookings
+        - expenses
+        - research-evidence
+      recordId:
+        type: string
+      label:
+        type: string
+      relations:
+        type: array
+        minItems: 1
+        uniqueItems: true
+        items:
+          type: string
+          enum:
+          - booking-booker
+          - expense-payer
+          - expense-split
+          - research-recorder
+  TripMemberDeletionImpact:
+    type: object
+    additionalProperties: false
+    required:
+    - references
+    - cascadeExpenses
+    - hasPrivatePackingItems
+    properties:
+      references:
+        type: array
+        description: References that must be changed before the member can be removed
+        items:
+          $ref: '#/schemas/TripMemberReference'
+      cascadeExpenses:
+        type: array
+        description: Manual expenses that can be deleted together after explicit confirmation
+        items:
+          $ref: '#/schemas/TripMemberReference'
+      hasPrivatePackingItems:
+        type: boolean
+        description: Indicates a private dependency without exposing another member's item details or count
+  SnapshotMutationResponse:
+    type: object
+    additionalProperties: false
+    required:
+    - snapshot
+    - replayed
+    properties:
+      snapshot:
+        $ref: ./snapshots.yaml#/schemas/SnapshotSummary
+      replayed:
+        type: boolean
+  AuditLogsResponse:
+    type: object
+    additionalProperties: false
+    required:
+    - records
+    properties:
+      records:
+        type: array
+        items:
+          $ref: '#/schemas/AuditLog'

@@ -1,0 +1,133 @@
+name: 质量守门
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: 代码、契约与数据安全
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      GO_COVERAGE_MIN: "35"
+    steps:
+      - name: 检出确切提交
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: 安装固定版本 Gitleaks
+        env:
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_ARCHIVE_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          archive="$RUNNER_TEMP/gitleaks.tar.gz"
+          curl --fail --silent --show-error --location \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            --output "$archive"
+          echo "${GITLEAKS_ARCHIVE_SHA256}  ${archive}" | sha256sum --check
+          tar -xzf "$archive" -C "$RUNNER_TEMP" gitleaks
+          chmod 0755 "$RUNNER_TEMP/gitleaks"
+
+      - name: 扫描本次提交中的秘密
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          target_sha="${PR_HEAD_SHA:-$GITHUB_SHA}"
+          case "$EVENT_NAME" in
+            pull_request)
+              log_range="${PR_BASE_SHA}..${target_sha}"
+              ;;
+            push)
+              if [[ -n "$PUSH_BEFORE_SHA" && ! "$PUSH_BEFORE_SHA" =~ ^0+$ ]]; then
+                log_range="${PUSH_BEFORE_SHA}..${target_sha}"
+              else
+                log_range="${target_sha}^!"
+              fi
+              ;;
+            *)
+              log_range="${target_sha}^!"
+              ;;
+          esac
+          "$RUNNER_TEMP/gitleaks" git . \
+            --redact \
+            --no-banner \
+            --log-opts="$log_range"
+
+      - name: 安装 Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: 安装前端锁定依赖
+        run: npm ci
+        working-directory: web
+
+      - name: 运行仓库完整验证
+        run: ./scripts/test.sh
+
+      - name: 扫描可达 Go 漏洞
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
+        working-directory: server
+
+      - name: 运行 Go race detector
+        run: go test -race ./...
+        working-directory: server
+
+  browser:
+    name: 桌面与移动端关键旅程
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: 检出确切提交
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: 安装前端与 Chromium
+        working-directory: web
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: 运行真实浏览器烟测
+        run: npm run test:e2e
+        working-directory: web
+
+  container:
+    name: 容器启动与安全边界
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: 检出确切提交
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: 启动隔离容器并验证
+        run: ./scripts/test-compose-smoke.sh

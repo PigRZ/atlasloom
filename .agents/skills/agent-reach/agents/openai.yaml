@@ -1,0 +1,4 @@
+interface:
+  display_name: "Agent Reach 互联网检索"
+  short_description: "统一调研网页、代码、社交平台、视频与招聘信息"
+  default_prompt: "使用 $agent-reach 从合适的互联网渠道检索并整理这个问题。"

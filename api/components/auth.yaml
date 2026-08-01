@@ -1,0 +1,152 @@
+# 认证与个人资料数据结构。
+schemas:
+  Bootstrap:
+    type: object
+    additionalProperties: false
+    required:
+    - token
+    - displayName
+    - mobile
+    - password
+    properties:
+      token:
+        type: string
+        format: password
+      displayName:
+        type: string
+        minLength: 1
+      mobile:
+        type: string
+        pattern: ^[0-9]{11}$
+      password:
+        type: string
+        format: password
+        minLength: 6
+  ProvisionUser:
+    type: object
+    additionalProperties: false
+    required:
+    - token
+    - displayName
+    - mobile
+    - password
+    properties:
+      token:
+        type: string
+        format: password
+      displayName:
+        type: string
+        minLength: 1
+      mobile:
+        type: string
+        pattern: ^[0-9]{11}$
+      password:
+        type: string
+        format: password
+        minLength: 6
+  Login:
+    type: object
+    additionalProperties: false
+    required:
+    - mobile
+    - password
+    properties:
+      mobile:
+        type: string
+        pattern: ^[0-9]{11}$
+      password:
+        type: string
+        format: password
+  Session:
+    type: object
+    additionalProperties: false
+    required:
+    - user
+    - csrfToken
+    - expiresAt
+    properties:
+      csrfToken:
+        type: string
+      expiresAt:
+        type: string
+        format: date-time
+      user:
+        $ref: '#/schemas/MemberIdentity'
+  MemberIdentity:
+    type: object
+    additionalProperties: false
+    required:
+    - id
+    - displayName
+    - mobile
+    - admin
+    properties:
+      id:
+        type: string
+      displayName:
+        type: string
+      mobile:
+        type: string
+        pattern: ^[0-9]{11}$
+      admin:
+        type: boolean
+  ProfileUpdate:
+    type: object
+    additionalProperties: false
+    required:
+    - displayName
+    - mobile
+    - alternateContact
+    - emergencyContact
+    - currentPassword
+    - newPassword
+    properties:
+      displayName:
+        type: string
+        minLength: 1
+      mobile:
+        type: string
+        pattern: ^[0-9]{11}$
+      alternateContact:
+        type: string
+      emergencyContact:
+        type: string
+      currentPassword:
+        type: string
+        format: password
+      newPassword:
+        type: string
+        format: password
+  MemberResponse:
+    type: object
+    additionalProperties: false
+    required:
+    - user
+    properties:
+      user:
+        $ref: '#/schemas/MemberIdentity'
+  ProfileResponse:
+    type: object
+    additionalProperties: false
+    required:
+    - record
+    - user
+    properties:
+      record:
+        $ref: ./library.yaml#/schemas/LibraryRecord
+      user:
+        $ref: '#/schemas/MemberIdentity'
+  ProfileUpdateResponse:
+    type: object
+    additionalProperties: false
+    required:
+    - record
+    - user
+    - snapshot
+    properties:
+      record:
+        $ref: ./library.yaml#/schemas/LibraryRecord
+      user:
+        $ref: '#/schemas/MemberIdentity'
+      snapshot:
+        $ref: ./snapshots.yaml#/schemas/SnapshotSummary

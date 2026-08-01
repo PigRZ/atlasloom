@@ -1,0 +1,306 @@
+# OpenAPI 根入口只负责聚合模块；路径和模型分别维护在 paths/ 与 components/。
+openapi: 3.1.1
+info:
+  title: Atlasloom API
+  version: 1.0.0
+  description: Browser and data-sync API for the reusable travel planner. The host Nginx exposes it below
+    /{APP_BASE_PATH}/api.
+servers:
+- url: /travel/api
+security:
+- sessionCookie: []
+tags:
+- name: 系统
+- name: 认证与个人资料
+- name: 基础库
+- name: 旅行
+- name: 旅行资料
+- name: 快照
+- name: 旅行备份
+- name: 地图与天气
+paths:
+  /healthz:
+    $ref: ./paths/system.yaml#/~1healthz
+  /auth/bootstrap:
+    $ref: ./paths/auth.yaml#/~1auth~1bootstrap
+  /auth/users:
+    $ref: ./paths/auth.yaml#/~1auth~1users
+  /auth/login:
+    $ref: ./paths/auth.yaml#/~1auth~1login
+  /auth/logout:
+    $ref: ./paths/auth.yaml#/~1auth~1logout
+  /session:
+    $ref: ./paths/auth.yaml#/~1session
+  /profile:
+    $ref: ./paths/auth.yaml#/~1profile
+  /library:
+    $ref: ./paths/library.yaml#/~1library
+  /library/snapshot:
+    $ref: ./paths/library.yaml#/~1library~1snapshot
+  /library/tags/presets:
+    $ref: ./paths/library.yaml#/~1library~1tags~1presets
+  /library/{libraryResource}:
+    $ref: ./paths/library.yaml#/~1library~1{libraryResource}
+  /library/{libraryResource}/{libraryRecordId}:
+    $ref: ./paths/library.yaml#/~1library~1{libraryResource}~1{libraryRecordId}
+  /library/{libraryResource}/{libraryRecordId}/deletion-impact:
+    $ref: ./paths/library.yaml#/~1library~1{libraryResource}~1{libraryRecordId}~1deletion-impact
+  /trips:
+    $ref: ./paths/trips.yaml#/~1trips
+  /trip-imports/preview:
+    $ref: ./paths/backups.yaml#/~1trip-imports~1preview
+  /trip-imports/apply:
+    $ref: ./paths/backups.yaml#/~1trip-imports~1apply
+  /trips/{tripId}:
+    $ref: ./paths/trips.yaml#/~1trips~1{tripId}
+  /trips/{tripId}/overview:
+    $ref: ./paths/trips.yaml#/~1trips~1{tripId}~1overview
+  /trips/{tripId}/backup:
+    $ref: ./paths/backups.yaml#/~1trips~1{tripId}~1backup
+  /trips/{tripId}/route:
+    $ref: ./paths/maps.yaml#/~1trips~1{tripId}~1route
+  /trips/{tripId}/{resource}:
+    $ref: ./paths/records.yaml#/~1trips~1{tripId}~1{resource}
+  /trips/{tripId}/{resource}/reorder:
+    $ref: ./paths/records.yaml#/~1trips~1{tripId}~1{resource}~1reorder
+  /trips/{tripId}/days/{dayId}/places:
+    $ref: ./paths/records.yaml#/~1trips~1{tripId}~1days~1{dayId}~1places
+  /trips/{tripId}/audit-logs:
+    $ref: ./paths/records.yaml#/~1trips~1{tripId}~1audit-logs
+  /trips/{tripId}/members/{recordId}/deletion-impact:
+    $ref: ./paths/records.yaml#/~1trips~1{tripId}~1members~1{recordId}~1deletion-impact
+  /trips/{tripId}/weather:
+    $ref: ./paths/maps.yaml#/~1trips~1{tripId}~1weather
+  /trips/{tripId}/map-config:
+    $ref: ./paths/maps.yaml#/~1trips~1{tripId}~1map-config
+  /trips/{tripId}/place-search:
+    $ref: ./paths/maps.yaml#/~1trips~1{tripId}~1place-search
+  /trips/{tripId}/reverse-geocode:
+    $ref: ./paths/maps.yaml#/~1trips~1{tripId}~1reverse-geocode
+  /_AMapService/v3/direction/driving:
+    $ref: ./paths/maps.yaml#/~1_AMapService~1v3~1direction~1driving
+  /_AMapService/v3/direction/walking:
+    $ref: ./paths/maps.yaml#/~1_AMapService~1v3~1direction~1walking
+  /_AMapService/v3/direction/transit/integrated:
+    $ref: ./paths/maps.yaml#/~1_AMapService~1v3~1direction~1transit~1integrated
+  /_AMapService/v5/direction/driving:
+    $ref: ./paths/maps.yaml#/~1_AMapService~1v5~1direction~1driving
+  /_AMapService/v5/direction/walking:
+    $ref: ./paths/maps.yaml#/~1_AMapService~1v5~1direction~1walking
+  /_AMapService/v3/place/text:
+    $ref: ./paths/maps.yaml#/~1_AMapService~1v3~1place~1text
+  /_AMapService/v3/geocode/regeo:
+    $ref: ./paths/maps.yaml#/~1_AMapService~1v3~1geocode~1regeo
+  /trips/{tripId}/{resource}/{recordId}:
+    $ref: ./paths/records.yaml#/~1trips~1{tripId}~1{resource}~1{recordId}
+  /trips/{tripId}/snapshots:
+    $ref: ./paths/snapshots.yaml#/~1trips~1{tripId}~1snapshots
+  /trips/{tripId}/snapshots/{snapshotId}:
+    $ref: ./paths/snapshots.yaml#/~1trips~1{tripId}~1snapshots~1{snapshotId}
+  /trips/{tripId}/snapshots/{snapshotId}/restore-preview:
+    $ref: ./paths/snapshots.yaml#/~1trips~1{tripId}~1snapshots~1{snapshotId}~1restore-preview
+  /trips/{tripId}/snapshots/{snapshotId}/restore:
+    $ref: ./paths/snapshots.yaml#/~1trips~1{tripId}~1snapshots~1{snapshotId}~1restore
+  /trips/{tripId}/snapshot-imports/preview:
+    $ref: ./paths/snapshots.yaml#/~1trips~1{tripId}~1snapshot-imports~1preview
+  /trips/{tripId}/snapshot-imports/apply:
+    $ref: ./paths/snapshots.yaml#/~1trips~1{tripId}~1snapshot-imports~1apply
+components:
+  securitySchemes:
+    sessionCookie:
+      $ref: ./components/common.yaml#/securitySchemes/sessionCookie
+  parameters:
+    TripID:
+      $ref: ./components/common.yaml#/parameters/TripID
+    Resource:
+      $ref: ./components/common.yaml#/parameters/Resource
+    SnapshotID:
+      $ref: ./components/common.yaml#/parameters/SnapshotID
+    CSRF:
+      $ref: ./components/common.yaml#/parameters/CSRF
+    Idempotency:
+      $ref: ./components/common.yaml#/parameters/Idempotency
+    IfMatch:
+      $ref: ./components/common.yaml#/parameters/IfMatch
+  responses:
+    Problem:
+      $ref: ./components/common.yaml#/responses/Problem
+  schemas:
+    Bootstrap:
+      $ref: ./components/auth.yaml#/schemas/Bootstrap
+    ProvisionUser:
+      $ref: ./components/auth.yaml#/schemas/ProvisionUser
+    Login:
+      $ref: ./components/auth.yaml#/schemas/Login
+    Session:
+      $ref: ./components/auth.yaml#/schemas/Session
+    MemberIdentity:
+      $ref: ./components/auth.yaml#/schemas/MemberIdentity
+    ProfileUpdate:
+      $ref: ./components/auth.yaml#/schemas/ProfileUpdate
+    Trip:
+      $ref: ./components/trips.yaml#/schemas/Trip
+    TripView:
+      $ref: ./components/trips.yaml#/schemas/TripView
+    TripCreate:
+      $ref: ./components/trips.yaml#/schemas/TripCreate
+    TripPatch:
+      $ref: ./components/trips.yaml#/schemas/TripPatch
+    ResourceName:
+      $ref: ./components/records.yaml#/schemas/ResourceName
+    LibraryResourceName:
+      $ref: ./components/library.yaml#/schemas/LibraryResourceName
+    CreateLibraryRecord:
+      $ref: ./components/library.yaml#/schemas/CreateLibraryRecord
+    PatchLibraryRecord:
+      $ref: ./components/library.yaml#/schemas/PatchLibraryRecord
+    LibraryRecord:
+      $ref: ./components/library.yaml#/schemas/LibraryRecord
+    CreateRecord:
+      $ref: ./components/records.yaml#/schemas/CreateRecord
+    PatchRecord:
+      $ref: ./components/records.yaml#/schemas/PatchRecord
+    ReorderRecords:
+      $ref: ./components/records.yaml#/schemas/ReorderRecords
+    DayPlaceEntry:
+      $ref: ./components/records.yaml#/schemas/DayPlaceEntry
+    DayData:
+      $ref: ./components/records.yaml#/schemas/DayData
+    PlaceData:
+      $ref: ./components/records.yaml#/schemas/PlaceData
+    SegmentData:
+      $ref: ./components/records.yaml#/schemas/SegmentData
+    BookingData:
+      $ref: ./components/records.yaml#/schemas/BookingData
+    BookingInputData:
+      $ref: ./components/records.yaml#/schemas/BookingInputData
+    ExpenseData:
+      $ref: ./components/records.yaml#/schemas/ExpenseData
+    PackingItemData:
+      $ref: ./components/records.yaml#/schemas/PackingItemData
+    PackingItemInputData:
+      $ref: ./components/records.yaml#/schemas/PackingItemInputData
+    ResearchEvidenceData:
+      $ref: ./components/records.yaml#/schemas/ResearchEvidenceData
+    MemberData:
+      $ref: ./components/records.yaml#/schemas/MemberData
+    RecordData:
+      $ref: ./components/records.yaml#/schemas/RecordData
+    RecordInputData:
+      $ref: ./components/records.yaml#/schemas/RecordInputData
+    Record:
+      $ref: ./components/records.yaml#/schemas/Record
+    AuditLog:
+      $ref: ./components/records.yaml#/schemas/AuditLog
+    SnapshotPayload:
+      $ref: ./components/snapshots.yaml#/schemas/SnapshotPayload
+    TripBackup:
+      $ref: ./components/backups.yaml#/schemas/TripBackup
+    TripBackupMemberDependency:
+      $ref: ./components/backups.yaml#/schemas/TripBackupMemberDependency
+    TripBackupTagDependency:
+      $ref: ./components/backups.yaml#/schemas/TripBackupTagDependency
+    TripBackupDependencyPreview:
+      $ref: ./components/backups.yaml#/schemas/TripBackupDependencyPreview
+    TripBackupImportPreview:
+      $ref: ./components/backups.yaml#/schemas/TripBackupImportPreview
+    TripBackupDependencyMapping:
+      $ref: ./components/backups.yaml#/schemas/TripBackupDependencyMapping
+    TripBackupImportResult:
+      $ref: ./components/backups.yaml#/schemas/TripBackupImportResult
+    ResourceDiff:
+      $ref: ./components/snapshots.yaml#/schemas/ResourceDiff
+    TripFieldDiff:
+      $ref: ./components/snapshots.yaml#/schemas/TripFieldDiff
+    TripChanges:
+      $ref: ./components/snapshots.yaml#/schemas/TripChanges
+    MembershipAccessChange:
+      $ref: ./components/snapshots.yaml#/schemas/MembershipAccessChange
+    MembershipAccessDiff:
+      $ref: ./components/snapshots.yaml#/schemas/MembershipAccessDiff
+    RestorePreview:
+      $ref: ./components/snapshots.yaml#/schemas/RestorePreview
+    SnapshotImportPreview:
+      $ref: ./components/snapshots.yaml#/schemas/SnapshotImportPreview
+    SnapshotRestoreResult:
+      $ref: ./components/snapshots.yaml#/schemas/SnapshotRestoreResult
+    SnapshotImportApplyResult:
+      $ref: ./components/snapshots.yaml#/schemas/SnapshotImportApplyResult
+    Problem:
+      $ref: ./components/common.yaml#/schemas/Problem
+    SnapshotSummary:
+      $ref: ./components/snapshots.yaml#/schemas/SnapshotSummary
+    Weather:
+      $ref: ./components/maps.yaml#/schemas/Weather
+    MapConfig:
+      $ref: ./components/maps.yaml#/schemas/MapConfig
+    Health:
+      $ref: ./components/common.yaml#/schemas/Health
+    MemberResponse:
+      $ref: ./components/auth.yaml#/schemas/MemberResponse
+    ProfileResponse:
+      $ref: ./components/auth.yaml#/schemas/ProfileResponse
+    ProfileUpdateResponse:
+      $ref: ./components/auth.yaml#/schemas/ProfileUpdateResponse
+    LibraryState:
+      $ref: ./components/library.yaml#/schemas/LibraryState
+    LibraryStateResponse:
+      $ref: ./components/library.yaml#/schemas/LibraryStateResponse
+    LibrarySnapshotPayload:
+      $ref: ./components/library.yaml#/schemas/LibrarySnapshotPayload
+    LibraryRecordsResponse:
+      $ref: ./components/library.yaml#/schemas/LibraryRecordsResponse
+    LibraryRecordResponse:
+      $ref: ./components/library.yaml#/schemas/LibraryRecordResponse
+    LibraryMutationResponse:
+      $ref: ./components/library.yaml#/schemas/LibraryMutationResponse
+    TagPresetsResponse:
+      $ref: ./components/library.yaml#/schemas/TagPresetsResponse
+    LibraryDeleteResponse:
+      $ref: ./components/library.yaml#/schemas/LibraryDeleteResponse
+    LibraryReference:
+      $ref: ./components/library.yaml#/schemas/LibraryReference
+    LibraryDeletionImpact:
+      $ref: ./components/library.yaml#/schemas/LibraryDeletionImpact
+    TripsResponse:
+      $ref: ./components/trips.yaml#/schemas/TripsResponse
+    TripResponse:
+      $ref: ./components/trips.yaml#/schemas/TripResponse
+    TripCreateResponse:
+      $ref: ./components/trips.yaml#/schemas/TripCreateResponse
+    TripMutationResponse:
+      $ref: ./components/trips.yaml#/schemas/TripMutationResponse
+    TripDeleteResponse:
+      $ref: ./components/trips.yaml#/schemas/TripDeleteResponse
+    TripOverviewResponse:
+      $ref: ./components/trips.yaml#/schemas/TripOverviewResponse
+    RecordsResponse:
+      $ref: ./components/records.yaml#/schemas/RecordsResponse
+    RecordResponse:
+      $ref: ./components/records.yaml#/schemas/RecordResponse
+    RecordMutationResponse:
+      $ref: ./components/records.yaml#/schemas/RecordMutationResponse
+    RecordDeleteResponse:
+      $ref: ./components/records.yaml#/schemas/RecordDeleteResponse
+    TripMemberReference:
+      $ref: ./components/records.yaml#/schemas/TripMemberReference
+    TripMemberDeletionImpact:
+      $ref: ./components/records.yaml#/schemas/TripMemberDeletionImpact
+    SnapshotMutationResponse:
+      $ref: ./components/records.yaml#/schemas/SnapshotMutationResponse
+    AuditLogsResponse:
+      $ref: ./components/records.yaml#/schemas/AuditLogsResponse
+    Snapshot:
+      $ref: ./components/snapshots.yaml#/schemas/Snapshot
+    SnapshotsResponse:
+      $ref: ./components/snapshots.yaml#/schemas/SnapshotsResponse
+    RoutePlan:
+      $ref: ./components/maps.yaml#/schemas/RoutePlan
+    PlaceCandidate:
+      $ref: ./components/maps.yaml#/schemas/PlaceCandidate
+    PlaceSearchResponse:
+      $ref: ./components/maps.yaml#/schemas/PlaceSearchResponse
+    ReverseGeocodeResponse:
+      $ref: ./components/maps.yaml#/schemas/ReverseGeocodeResponse
+    AMapProxyResponse:
+      $ref: ./components/maps.yaml#/schemas/AMapProxyResponse

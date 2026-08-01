@@ -1,0 +1,310 @@
+# 地图与天气接口路径。
+/trips/{tripId}/route:
+  parameters:
+  - $ref: ../components/common.yaml#/parameters/TripID
+  get:
+    operationId: planRoute
+    summary: Plan a drawable route through AMap Web Service
+    parameters:
+    - name: mode
+      in: query
+      required: true
+      schema:
+        type: string
+        enum:
+        - drive
+        - taxi
+        - rideshare
+        - walk
+        - bicycle
+    - name: origin
+      in: query
+      required: true
+      schema:
+        type: string
+        description: Longitude and latitude separated by a comma
+    - name: destination
+      in: query
+      required: true
+      schema:
+        type: string
+        description: Longitude and latitude separated by a comma
+    responses:
+      '200':
+        description: Normalized distance, duration and route coordinates
+        content:
+          application/json:
+            schema:
+              $ref: ../components/maps.yaml#/schemas/RoutePlan
+      '400':
+        $ref: ../components/common.yaml#/responses/Problem
+      '401':
+        $ref: ../components/common.yaml#/responses/Problem
+      '403':
+        $ref: ../components/common.yaml#/responses/Problem
+      '502':
+        $ref: ../components/common.yaml#/responses/Problem
+      '503':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 地图与天气
+/trips/{tripId}/weather:
+  parameters:
+  - $ref: ../components/common.yaml#/parameters/TripID
+  - name: adcode
+    in: query
+    required: true
+    description: AMap six-digit administrative code
+    schema:
+      type: string
+      pattern: ^\d{6}$
+  - name: refresh
+    in: query
+    required: false
+    description: Bypass the short server cache when the execution page is entered
+    schema:
+      type: boolean
+      default: false
+  get:
+    operationId: getWeather
+    summary: Get the trip weather forecast
+    description: Read current AMap forecast, with an optional cache bypass. It never writes or overwrites
+      the plan.
+    responses:
+      '200':
+        description: Current four-day AMap forecast
+        content:
+          application/json:
+            schema:
+              $ref: ../components/maps.yaml#/schemas/Weather
+      '503':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 地图与天气
+/trips/{tripId}/map-config:
+  parameters:
+  - $ref: ../components/common.yaml#/parameters/TripID
+  get:
+    operationId: getMapConfig
+    summary: Get map configuration
+    description: Returns the public JSAPI key and whether the authenticated AMap proxy is configured.
+    responses:
+      '200':
+        description: Map rendering configuration
+        content:
+          application/json:
+            schema:
+              $ref: ../components/maps.yaml#/schemas/MapConfig
+    tags:
+    - 地图与天气
+/trips/{tripId}/place-search:
+  parameters:
+  - $ref: ../components/common.yaml#/parameters/TripID
+  get:
+    operationId: searchPlaces
+    summary: Search AMap places through the server Web Service key
+    parameters:
+    - name: keywords
+      in: query
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 80
+    responses:
+      '200':
+        description: Normalized place candidates with address and coordinates
+        content:
+          application/json:
+            schema:
+              $ref: ../components/maps.yaml#/schemas/PlaceSearchResponse
+      '400':
+        $ref: ../components/common.yaml#/responses/Problem
+      '502':
+        $ref: ../components/common.yaml#/responses/Problem
+      '503':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 地图与天气
+/trips/{tripId}/reverse-geocode:
+  parameters:
+  - $ref: ../components/common.yaml#/parameters/TripID
+  get:
+    operationId: reverseGeocode
+    summary: Resolve a map-picked coordinate through the server Web Service key
+    parameters:
+    - name: location
+      in: query
+      required: true
+      schema:
+        type: string
+    responses:
+      '200':
+        description: Normalized full address and weather region
+        content:
+          application/json:
+            schema:
+              $ref: ../components/maps.yaml#/schemas/ReverseGeocodeResponse
+      '400':
+        $ref: ../components/common.yaml#/responses/Problem
+      '502':
+        $ref: ../components/common.yaml#/responses/Problem
+      '503':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 地图与天气
+/_AMapService/v3/direction/driving:
+  servers:
+  - url: /
+  get:
+    operationId: proxyAmapDrivingV3
+    summary: Proxy AMap v3 driving directions
+    description: Authenticated fixed first-level AMap driving proxy. The security code is appended server-side
+      and never returned to the browser.
+    responses:
+      '200':
+        description: Proxied AMap response
+        content:
+          application/json:
+            schema:
+              $ref: ../components/maps.yaml#/schemas/AMapProxyResponse
+      '401':
+        $ref: ../components/common.yaml#/responses/Problem
+      '400':
+        $ref: ../components/common.yaml#/responses/Problem
+      '503':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 地图与天气
+/_AMapService/v3/direction/walking:
+  servers:
+  - url: /
+  get:
+    operationId: proxyAmapWalkingV3
+    summary: Proxy AMap v3 walking directions
+    description: Authenticated same-origin AMap walking proxy.
+    responses:
+      '200':
+        description: Proxied AMap response
+        content:
+          application/json:
+            schema:
+              $ref: ../components/maps.yaml#/schemas/AMapProxyResponse
+      '401':
+        $ref: ../components/common.yaml#/responses/Problem
+      '400':
+        $ref: ../components/common.yaml#/responses/Problem
+      '503':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 地图与天气
+/_AMapService/v3/direction/transit/integrated:
+  servers:
+  - url: /
+  get:
+    operationId: proxyAmapTransitV3
+    summary: Proxy AMap v3 transit directions
+    description: Authenticated same-origin AMap integrated-transit proxy.
+    responses:
+      '200':
+        description: Proxied AMap response
+        content:
+          application/json:
+            schema:
+              $ref: ../components/maps.yaml#/schemas/AMapProxyResponse
+      '401':
+        $ref: ../components/common.yaml#/responses/Problem
+      '400':
+        $ref: ../components/common.yaml#/responses/Problem
+      '503':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 地图与天气
+/_AMapService/v5/direction/driving:
+  servers:
+  - url: /
+  get:
+    operationId: proxyAmapDrivingV5
+    summary: Proxy AMap v5 driving directions
+    description: Authenticated same-origin AMap driving proxy.
+    responses:
+      '200':
+        description: Proxied AMap response
+        content:
+          application/json:
+            schema:
+              $ref: ../components/maps.yaml#/schemas/AMapProxyResponse
+      '401':
+        $ref: ../components/common.yaml#/responses/Problem
+      '400':
+        $ref: ../components/common.yaml#/responses/Problem
+      '503':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 地图与天气
+/_AMapService/v5/direction/walking:
+  servers:
+  - url: /
+  get:
+    operationId: proxyAmapWalkingV5
+    summary: Proxy AMap v5 walking directions
+    description: Authenticated same-origin AMap walking proxy.
+    responses:
+      '200':
+        description: Proxied AMap response
+        content:
+          application/json:
+            schema:
+              $ref: ../components/maps.yaml#/schemas/AMapProxyResponse
+      '401':
+        $ref: ../components/common.yaml#/responses/Problem
+      '400':
+        $ref: ../components/common.yaml#/responses/Problem
+      '503':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 地图与天气
+/_AMapService/v3/place/text:
+  servers:
+  - url: /
+  get:
+    operationId: proxyAmapPlaceText
+    summary: Proxy AMap text place search
+    description: Authenticated first-level place search proxy for AMap JSAPI.
+    responses:
+      '200':
+        description: Proxied AMap response
+        content:
+          application/json:
+            schema:
+              $ref: ../components/maps.yaml#/schemas/AMapProxyResponse
+      '401':
+        $ref: ../components/common.yaml#/responses/Problem
+      '400':
+        $ref: ../components/common.yaml#/responses/Problem
+      '503':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 地图与天气
+/_AMapService/v3/geocode/regeo:
+  servers:
+  - url: /
+  get:
+    operationId: proxyAmapReverseGeocode
+    summary: Proxy AMap reverse geocoding
+    description: Authenticated first-level reverse-geocoding proxy for AMap JSAPI.
+    responses:
+      '200':
+        description: Proxied AMap response
+        content:
+          application/json:
+            schema:
+              $ref: ../components/maps.yaml#/schemas/AMapProxyResponse
+      '401':
+        $ref: ../components/common.yaml#/responses/Problem
+      '400':
+        $ref: ../components/common.yaml#/responses/Problem
+      '503':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 地图与天气

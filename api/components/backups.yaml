@@ -1,0 +1,182 @@
+# 旅行备份数据结构。
+schemas:
+  TripBackup:
+    type: object
+    additionalProperties: false
+    required:
+    - kind
+    - exportedAt
+    - contentChecksum
+    - snapshot
+    - dependencies
+    properties:
+      kind:
+        type: string
+        const: my-travel-trip-backup
+      exportedAt:
+        type: string
+        format: date-time
+      contentChecksum:
+        type: string
+        pattern: ^[a-f0-9]{64}$
+      snapshot:
+        $ref: ./snapshots.yaml#/schemas/SnapshotPayload
+      dependencies:
+        type: object
+        additionalProperties: false
+        required:
+        - members
+        - tags
+        properties:
+          members:
+            type: array
+            items:
+              $ref: '#/schemas/TripBackupMemberDependency'
+          tags:
+            type: array
+            items:
+              $ref: '#/schemas/TripBackupTagDependency'
+  TripBackupMemberDependency:
+    type: object
+    additionalProperties: false
+    required:
+    - sourceId
+    - displayName
+    properties:
+      sourceId:
+        type: string
+      displayName:
+        type: string
+  TripBackupTagDependency:
+    type: object
+    additionalProperties: false
+    required:
+    - sourceId
+    - name
+    - category
+    properties:
+      sourceId:
+        type: string
+      name:
+        type: string
+      category:
+        type: string
+        enum:
+        - general
+        - place-type
+        - expense-type
+        - platform-type
+      color:
+        type: string
+  TripBackupDependencyPreview:
+    type: object
+    additionalProperties: false
+    required:
+    - sourceId
+    - status
+    properties:
+      sourceId:
+        type: string
+      displayName:
+        type: string
+      name:
+        type: string
+      category:
+        type: string
+        enum:
+        - general
+        - place-type
+        - expense-type
+        - platform-type
+      status:
+        type: string
+        enum:
+        - matched-id
+        - matched-semantic
+        - missing
+        - conflict
+      targetId:
+        type: string
+  TripBackupImportPreview:
+    type: object
+    additionalProperties: false
+    required:
+    - valid
+    - ready
+    - validationErrors
+    - trip
+    - counts
+    - members
+    - tags
+    properties:
+      valid:
+        type: boolean
+      ready:
+        type: boolean
+      validationErrors:
+        type: array
+        items:
+          type: string
+      checksum:
+        type: string
+        pattern: ^[a-f0-9]{64}$
+      suggestedTripId:
+        type: string
+      trip:
+        type: object
+        additionalProperties: false
+        required:
+        - title
+        - startDate
+        - endDate
+        properties:
+          title:
+            type: string
+          startDate:
+            type: string
+            format: date
+          endDate:
+            type: string
+            format: date
+      counts:
+        type: object
+        additionalProperties:
+          type: integer
+          minimum: 0
+      members:
+        type: array
+        items:
+          $ref: '#/schemas/TripBackupDependencyPreview'
+      tags:
+        type: array
+        items:
+          $ref: '#/schemas/TripBackupDependencyPreview'
+  TripBackupDependencyMapping:
+    type: object
+    additionalProperties: false
+    required:
+    - sourceId
+    - create
+    properties:
+      sourceId:
+        type: string
+      targetId:
+        type: string
+      create:
+        type: boolean
+  TripBackupImportResult:
+    type: object
+    additionalProperties: false
+    required:
+    - trip
+    - snapshot
+    - replayed
+    properties:
+      trip:
+        $ref: ./trips.yaml#/schemas/TripView
+      snapshot:
+        $ref: ./snapshots.yaml#/schemas/SnapshotSummary
+      librarySnapshot:
+        $ref: ./snapshots.yaml#/schemas/SnapshotSummary
+      replayed:
+        type: boolean

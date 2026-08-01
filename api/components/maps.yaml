@@ -1,0 +1,162 @@
+# 地图与天气数据结构。
+schemas:
+  Weather:
+    type: object
+    required:
+    - city
+    - adcode
+    - reportedAt
+    - fetchedAt
+    - expiresAt
+    - freshness
+    - forecasts
+    - cached
+    properties:
+      city:
+        type: string
+      adcode:
+        type: string
+      province:
+        type: string
+      reportedAt:
+        type: string
+      fetchedAt:
+        type: string
+        format: date-time
+      expiresAt:
+        type: string
+        format: date-time
+      freshness:
+        type: string
+        enum:
+        - fresh
+        - stale
+      refreshError:
+        type: string
+      cached:
+        type: boolean
+      forecasts:
+        type: array
+        maxItems: 4
+        items:
+          type: object
+          additionalProperties: false
+          required:
+          - date
+          - dayWeather
+          - nightWeather
+          - dayTemp
+          - nightTemp
+          - dayWind
+          - nightWind
+          - dayPower
+          - nightPower
+          properties:
+            date:
+              type: string
+              format: date
+            dayWeather:
+              type: string
+            nightWeather:
+              type: string
+            dayTemp:
+              type: string
+            nightTemp:
+              type: string
+            dayWind:
+              type: string
+            nightWind:
+              type: string
+            dayPower:
+              type: string
+            nightPower:
+              type: string
+  MapConfig:
+    type: object
+    required:
+    - enabled
+    - jsapiKey
+    properties:
+      enabled:
+        type: boolean
+      jsapiKey:
+        type: string
+        description: Public AMap Web JSAPI key. This is not the security code.
+  RoutePlan:
+    type: object
+    additionalProperties: false
+    required:
+    - distanceMeters
+    - durationSeconds
+    - path
+    properties:
+      distanceMeters:
+        type: integer
+        minimum: 0
+      durationSeconds:
+        type: integer
+        minimum: 0
+      path:
+        type: array
+        minItems: 2
+        items:
+          type: array
+          prefixItems:
+          - type: number
+            minimum: 73
+            maximum: 136
+          - type: number
+            minimum: 3
+            maximum: 54
+          minItems: 2
+          maxItems: 2
+  PlaceCandidate:
+    type: object
+    additionalProperties: false
+    required:
+    - id
+    - name
+    - address
+    - longitude
+    - latitude
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+      address:
+        type: string
+      longitude:
+        type: number
+      latitude:
+        type: number
+      adcode:
+        type: string
+      region:
+        type: string
+  PlaceSearchResponse:
+    type: object
+    additionalProperties: false
+    required:
+    - candidates
+    properties:
+      candidates:
+        type: array
+        items:
+          $ref: '#/schemas/PlaceCandidate'
+  ReverseGeocodeResponse:
+    type: object
+    additionalProperties: false
+    required:
+    - address
+    properties:
+      address:
+        type: string
+      adcode:
+        type: string
+      region:
+        type: string
+  AMapProxyResponse:
+    type: object
+    description: 高德上游 JSON 原样响应；安全码不会出现在响应中。
+    additionalProperties: true

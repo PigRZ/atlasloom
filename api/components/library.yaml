@@ -1,0 +1,316 @@
+# 基础库数据结构。
+schemas:
+  LibraryResourceName:
+    type: string
+    enum:
+    - members
+    - tags
+  TagCategory:
+    type: string
+    enum:
+    - general
+    - place-type
+    - expense-type
+    - platform-type
+  MemberLibraryData:
+    type: object
+    additionalProperties: false
+    required:
+    - displayName
+    properties:
+      displayName:
+        type: string
+        minLength: 1
+      mobile:
+        type: string
+        pattern: ^[0-9]{11}$
+      alternateContact:
+        type: string
+      emergencyContact:
+        type: string
+      admin:
+        type: boolean
+      status:
+        type: string
+        description: Explicit inactive status rejects login and invalidates existing sessions
+        enum:
+        - active
+        - inactive
+      note:
+        type: string
+  TagData:
+    type: object
+    additionalProperties: false
+    required:
+    - name
+    - category
+    properties:
+      name:
+        type: string
+        minLength: 1
+      category:
+        $ref: '#/schemas/TagCategory'
+      color:
+        type: string
+      status:
+        type: string
+        enum:
+        - active
+        - inactive
+  LibraryRecordData:
+    oneOf:
+    - $ref: '#/schemas/MemberLibraryData'
+    - $ref: '#/schemas/TagData'
+  CreateLibraryRecord:
+    type: object
+    additionalProperties: false
+    required:
+    - recordKey
+    - data
+    properties:
+      recordKey:
+        type: string
+        maxLength: 128
+        pattern: ^[A-Za-z0-9](?:[A-Za-z0-9_:-]|\.[A-Za-z0-9_:-])*\.?$
+      data:
+        $ref: '#/schemas/LibraryRecordData'
+      password:
+        type: string
+        format: password
+        minLength: 6
+  PatchLibraryRecord:
+    type: object
+    additionalProperties: false
+    required:
+    - data
+    properties:
+      data:
+        $ref: '#/schemas/LibraryRecordData'
+      password:
+        type: string
+        format: password
+        minLength: 6
+  LibraryRecord:
+    type: object
+    additionalProperties: false
+    required:
+    - id
+    - resource
+    - recordKey
+    - position
+    - version
+    - data
+    - createdAt
+    - updatedAt
+    properties:
+      id:
+        type: string
+        maxLength: 128
+        pattern: ^[A-Za-z0-9](?:[A-Za-z0-9_:-]|\.[A-Za-z0-9_:-])*\.?$
+      resource:
+        $ref: '#/schemas/LibraryResourceName'
+      recordKey:
+        type: string
+        maxLength: 128
+        pattern: ^[A-Za-z0-9](?:[A-Za-z0-9_:-]|\.[A-Za-z0-9_:-])*\.?$
+      position:
+        type: integer
+        minimum: 0
+      version:
+        type: integer
+        minimum: 1
+      data:
+        $ref: '#/schemas/LibraryRecordData'
+      createdAt:
+        type: string
+        format: date-time
+      updatedAt:
+        type: string
+        format: date-time
+  LibraryState:
+    type: object
+    additionalProperties: false
+    required:
+    - id
+    - version
+    - updatedAt
+    properties:
+      id:
+        type: string
+      version:
+        type: integer
+        minimum: 1
+      updatedAt:
+        type: string
+        format: date-time
+  LibraryStateResponse:
+    type: object
+    additionalProperties: false
+    required:
+    - library
+    properties:
+      library:
+        $ref: '#/schemas/LibraryState'
+  LibrarySnapshotPayload:
+    type: object
+    additionalProperties: false
+    required:
+    - exportedAt
+    - reason
+    - revision
+    - contentChecksum
+    - datasets
+    properties:
+      exportedAt:
+        type: string
+        format: date-time
+      reason:
+        type: string
+      revision:
+        type: integer
+        minimum: 1
+      contentChecksum:
+        type: string
+        pattern: ^[a-f0-9]{64}$
+      datasets:
+        type: object
+        additionalProperties: false
+        required:
+        - members
+        - tags
+        properties:
+          members:
+            type: array
+            items:
+              $ref: '#/schemas/LibraryRecord'
+          tags:
+            type: array
+            items:
+              $ref: '#/schemas/LibraryRecord'
+  LibraryRecordsResponse:
+    type: object
+    additionalProperties: false
+    required:
+    - records
+    properties:
+      records:
+        type: array
+        items:
+          $ref: '#/schemas/LibraryRecord'
+  LibraryRecordResponse:
+    type: object
+    additionalProperties: false
+    required:
+    - record
+    properties:
+      record:
+        $ref: '#/schemas/LibraryRecord'
+  LibraryMutationResponse:
+    type: object
+    additionalProperties: false
+    required:
+    - record
+    - snapshot
+    properties:
+      record:
+        $ref: '#/schemas/LibraryRecord'
+      snapshot:
+        $ref: ./snapshots.yaml#/schemas/SnapshotSummary
+      replayed:
+        type: boolean
+  TagPresetsResponse:
+    type: object
+    additionalProperties: false
+    required:
+    - records
+    - replayed
+    properties:
+      records:
+        type: array
+        items:
+          $ref: '#/schemas/LibraryRecord'
+      snapshot:
+        $ref: ./snapshots.yaml#/schemas/SnapshotSummary
+      replayed:
+        type: boolean
+  LibraryDeleteResponse:
+    type: object
+    additionalProperties: false
+    required:
+    - deleted
+    - snapshot
+    properties:
+      deleted:
+        type: boolean
+        const: true
+      snapshot:
+        $ref: ./snapshots.yaml#/schemas/SnapshotSummary
+  LibraryReference:
+    type: object
+    additionalProperties: false
+    required:
+    - tripId
+    - tripTitle
+    - tripDeleted
+    - resource
+    - label
+    - relations
+    properties:
+      tripId:
+        type: string
+      tripTitle:
+        type: string
+      tripDeleted:
+        type: boolean
+      resource:
+        $ref: ./records.yaml#/schemas/ResourceName
+      recordId:
+        type: string
+      label:
+        type: string
+      relations:
+        type: array
+        minItems: 1
+        uniqueItems: true
+        items:
+          type: string
+          enum:
+          - trip-member
+          - booking-booker
+          - research-recorder
+          - expense-payer
+          - expense-split
+          - packing-owner
+          - record-creator
+          - record-updater
+          - place-type
+          - booking-type
+          - expense-type
+          - booking-platform
+          - research-platform
+  LibraryDeletionImpact:
+    type: object
+    additionalProperties: false
+    required:
+    - references
+    - hasLoginCredential
+    - hasTripOwnership
+    - canDeleteWithCredential
+    - canReplaceWithFallback
+    properties:
+      references:
+        type: array
+        items:
+          $ref: '#/schemas/LibraryReference'
+      hasLoginCredential:
+        type: boolean
+        description: Whether a member still owns a login credential
+      hasTripOwnership:
+        type: boolean
+        description: Whether a member still owns any Trip and therefore cannot be physically deleted
+      canDeleteWithCredential:
+        type: boolean
+        description: Whether an inactive unreferenced non-owner member can be deleted with explicit credential revocation
+      canReplaceWithFallback:
+        type: boolean
+        description: Whether a referenced tag can be replaced with the same-category fallback before deletion

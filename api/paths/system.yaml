@@ -1,0 +1,17 @@
+# 系统接口路径。
+/healthz:
+  get:
+    operationId: health
+    summary: Check API and database contract health
+    security: []
+    responses:
+      '200':
+        description: API and current MongoDB contract are ready
+        content:
+          application/json:
+            schema:
+              $ref: ../components/common.yaml#/schemas/Health
+      '503':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 系统

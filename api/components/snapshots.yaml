@@ -1,0 +1,356 @@
+# 快照数据结构。
+schemas:
+  SnapshotPayload:
+    type: object
+    additionalProperties: false
+    required:
+    - exportedAt
+    - reason
+    - revision
+    - contentChecksum
+    - trip
+    - datasets
+    properties:
+      exportedAt:
+        type: string
+        format: date-time
+      reason:
+        type: string
+      revision:
+        type: integer
+        minimum: 1
+      contentChecksum:
+        type: string
+        pattern: ^[a-f0-9]{64}$
+      trip:
+        $ref: ./trips.yaml#/schemas/Trip
+      datasets:
+        type: object
+        additionalProperties: false
+        required:
+        - days
+        - places
+        - segments
+        - bookings
+        - expenses
+        - packing-items
+        - research-evidence
+        - members
+        properties:
+          days:
+            type: array
+            items:
+              $ref: ./records.yaml#/schemas/Record
+          places:
+            type: array
+            items:
+              $ref: ./records.yaml#/schemas/Record
+          segments:
+            type: array
+            items:
+              $ref: ./records.yaml#/schemas/Record
+          bookings:
+            type: array
+            items:
+              $ref: ./records.yaml#/schemas/Record
+          expenses:
+            type: array
+            items:
+              $ref: ./records.yaml#/schemas/Record
+          packing-items:
+            type: array
+            items:
+              $ref: ./records.yaml#/schemas/Record
+          research-evidence:
+            type: array
+            items:
+              $ref: ./records.yaml#/schemas/Record
+          members:
+            type: array
+            items:
+              $ref: ./records.yaml#/schemas/Record
+  ResourceDiff:
+    type: object
+    additionalProperties: false
+    required:
+    - current
+    - incoming
+    - created
+    - updated
+    - deleted
+    properties:
+      current:
+        type: integer
+        minimum: 0
+      incoming:
+        type: integer
+        minimum: 0
+      created:
+        type: integer
+        minimum: 0
+      updated:
+        type: integer
+        minimum: 0
+      deleted:
+        type: integer
+        minimum: 0
+  TripFieldDiff:
+    type: object
+    additionalProperties: false
+    required:
+    - current
+    - incoming
+    properties:
+      current:
+        type: string
+      incoming:
+        type: string
+  TripChanges:
+    type: object
+    additionalProperties: false
+    properties:
+      title:
+        $ref: '#/schemas/TripFieldDiff'
+      summary:
+        $ref: '#/schemas/TripFieldDiff'
+      startDate:
+        $ref: '#/schemas/TripFieldDiff'
+      endDate:
+        $ref: '#/schemas/TripFieldDiff'
+      timezone:
+        $ref: '#/schemas/TripFieldDiff'
+      currency:
+        $ref: '#/schemas/TripFieldDiff'
+  MembershipAccessChange:
+    type: object
+    additionalProperties: false
+    required:
+    - memberId
+    - role
+    properties:
+      memberId:
+        type: string
+      role:
+        type: string
+        enum:
+        - owner
+        - editor
+        - viewer
+  MembershipAccessDiff:
+    type: object
+    additionalProperties: false
+    required:
+    - created
+    - deleted
+    properties:
+      created:
+        type: array
+        description: Access grants that applying the snapshot will create, sorted by memberId and role
+        items:
+          $ref: '#/schemas/MembershipAccessChange'
+      deleted:
+        type: array
+        description: Access grants that applying the snapshot will revoke, sorted by memberId and role
+        items:
+          $ref: '#/schemas/MembershipAccessChange'
+  RestorePreview:
+    type: object
+    additionalProperties: false
+    required:
+    - snapshotId
+    - sha256
+    - baseRevision
+    - currentRevision
+    - checksum
+    - tripChanges
+    - membershipAccess
+    - deleteCount
+    - resources
+    - hasChanges
+    - message
+    properties:
+      snapshotId:
+        type: string
+      sha256:
+        type: string
+        pattern: ^[a-f0-9]{64}$
+      baseRevision:
+        type: integer
+        minimum: 1
+      currentRevision:
+        type: integer
+        minimum: 1
+      checksum:
+        type: string
+        pattern: ^[a-f0-9]{64}$
+      tripChanges:
+        $ref: '#/schemas/TripChanges'
+      membershipAccess:
+        $ref: '#/schemas/MembershipAccessDiff'
+      deleteCount:
+        type: integer
+        minimum: 0
+        description: Total record deletions plus revoked non-owner access grants
+      resources:
+        type: object
+        additionalProperties:
+          $ref: '#/schemas/ResourceDiff'
+      hasChanges:
+        type: boolean
+      message:
+        type: string
+  SnapshotImportPreview:
+    type: object
+    additionalProperties: false
+    required:
+    - valid
+    - validationErrors
+    - baseRevision
+    - currentRevision
+    - tripChanges
+    - membershipAccess
+    - deleteCount
+    - resources
+    - hasChanges
+    - message
+    properties:
+      valid:
+        type: boolean
+      validationErrors:
+        type: array
+        items:
+          type: string
+      baseRevision:
+        type: integer
+        minimum: 1
+      currentRevision:
+        type: integer
+        minimum: 1
+      checksum:
+        type: string
+        pattern: ^[a-f0-9]{64}$
+      tripChanges:
+        $ref: '#/schemas/TripChanges'
+      membershipAccess:
+        $ref: '#/schemas/MembershipAccessDiff'
+      deleteCount:
+        type: integer
+        minimum: 0
+        description: Total record deletions plus revoked non-owner access grants
+      resources:
+        type: object
+        additionalProperties:
+          $ref: '#/schemas/ResourceDiff'
+      hasChanges:
+        type: boolean
+      message:
+        type: string
+  SnapshotRestoreResult:
+    type: object
+    additionalProperties: false
+    required:
+    - restored
+    - message
+    properties:
+      restored:
+        type: boolean
+      message:
+        type: string
+      before:
+        $ref: '#/schemas/SnapshotSummary'
+      after:
+        $ref: '#/schemas/SnapshotSummary'
+  SnapshotImportApplyResult:
+    type: object
+    additionalProperties: false
+    required:
+    - applied
+    - replayed
+    - message
+    properties:
+      applied:
+        type: boolean
+      replayed:
+        type: boolean
+      message:
+        type: string
+      before:
+        $ref: '#/schemas/SnapshotSummary'
+      after:
+        $ref: '#/schemas/SnapshotSummary'
+  SnapshotSummary:
+    type: object
+    additionalProperties: false
+    required:
+    - id
+    - revision
+    - sha256
+    - contentChecksum
+    - mirrorState
+    - createdAt
+    properties:
+      id:
+        type: string
+      revision:
+        type: integer
+        minimum: 1
+      sha256:
+        type: string
+        pattern: ^[a-f0-9]{64}$
+      contentChecksum:
+        type: string
+        pattern: ^[a-f0-9]{64}$
+      mirrorState:
+        type: string
+        enum:
+        - pending
+        - mirrored
+      createdAt:
+        type: string
+        format: date-time
+  Snapshot:
+    type: object
+    additionalProperties: false
+    required:
+    - id
+    - tripId
+    - revision
+    - reason
+    - sha256
+    - contentChecksum
+    - mirrorState
+    - createdAt
+    properties:
+      id:
+        type: string
+      tripId:
+        type: string
+      revision:
+        type: integer
+        minimum: 1
+      reason:
+        type: string
+      sha256:
+        type: string
+        pattern: ^[a-f0-9]{64}$
+      contentChecksum:
+        type: string
+        pattern: ^[a-f0-9]{64}$
+      mirrorState:
+        type: string
+        enum:
+        - pending
+        - mirrored
+      createdAt:
+        type: string
+        format: date-time
+  SnapshotsResponse:
+    type: object
+    additionalProperties: false
+    required:
+    - snapshots
+    properties:
+      snapshots:
+        type: array
+        items:
+          $ref: '#/schemas/Snapshot'

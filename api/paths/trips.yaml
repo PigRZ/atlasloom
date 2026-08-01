@@ -1,0 +1,126 @@
+# 旅行接口路径。
+/trips:
+  get:
+    operationId: listTrips
+    summary: List trips available to the current member
+    description: Members receive trips they can open. Administrators additionally receive all active trips
+      so they can export or logically delete them; those extra rows omit role and do not grant read or edit access.
+    responses:
+      '200':
+        description: Visible trips
+        content:
+          application/json:
+            schema:
+              $ref: ../components/trips.yaml#/schemas/TripsResponse
+    tags:
+    - 旅行
+  post:
+    operationId: createTrip
+    summary: Create a trip
+    parameters:
+    - $ref: ../components/common.yaml#/parameters/CSRF
+    - $ref: ../components/common.yaml#/parameters/Idempotency
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../components/trips.yaml#/schemas/TripCreate
+    responses:
+      '201':
+        description: Trip created
+        content:
+          application/json:
+            schema:
+              $ref: ../components/trips.yaml#/schemas/TripCreateResponse
+      '400':
+        $ref: ../components/common.yaml#/responses/Problem
+      '403':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 旅行
+/trips/{tripId}:
+  parameters:
+  - $ref: ../components/common.yaml#/parameters/TripID
+  get:
+    operationId: getTrip
+    summary: Get a trip
+    responses:
+      '200':
+        description: Trip metadata
+        content:
+          application/json:
+            schema:
+              $ref: ../components/trips.yaml#/schemas/TripResponse
+      '403':
+        $ref: ../components/common.yaml#/responses/Problem
+      '404':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 旅行
+  patch:
+    operationId: updateTrip
+    summary: Update a trip
+    parameters:
+    - $ref: ../components/common.yaml#/parameters/CSRF
+    - $ref: ../components/common.yaml#/parameters/IfMatch
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../components/trips.yaml#/schemas/TripPatch
+    responses:
+      '200':
+        description: Trip metadata and snapshot updated
+        content:
+          application/json:
+            schema:
+              $ref: ../components/trips.yaml#/schemas/TripMutationResponse
+      '400':
+        $ref: ../components/common.yaml#/responses/Problem
+      '403':
+        $ref: ../components/common.yaml#/responses/Problem
+      '412':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 旅行
+  delete:
+    operationId: deleteTrip
+    summary: Logically delete a trip without removing its aggregate data
+    description: Available to the trip owner or an administrator. Administrator deletion does not grant
+      access to the trip contents.
+    parameters:
+    - $ref: ../components/common.yaml#/parameters/CSRF
+    - $ref: ../components/common.yaml#/parameters/IfMatch
+    responses:
+      '200':
+        description: Trip hidden and deletion snapshot created
+        content:
+          application/json:
+            schema:
+              $ref: ../components/trips.yaml#/schemas/TripDeleteResponse
+      '403':
+        $ref: ../components/common.yaml#/responses/Problem
+      '404':
+        $ref: ../components/common.yaml#/responses/Problem
+      '412':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 旅行
+/trips/{tripId}/overview:
+  parameters:
+  - $ref: ../components/common.yaml#/parameters/TripID
+  get:
+    operationId: getTripOverview
+    summary: Get a trip overview
+    description: Shared-resource counts cover the Trip; packing-items counts only the current member's records.
+    responses:
+      '200':
+        description: Actor-visible record counts for all trip-bound resources
+        content:
+          application/json:
+            schema:
+              $ref: ../components/trips.yaml#/schemas/TripOverviewResponse
+    tags:
+    - 旅行

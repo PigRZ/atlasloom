@@ -1,0 +1,47 @@
+{
+  "name": "my-travel-web",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "typecheck": "tsc -b --pretty false",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "docs:screenshots": "UPDATE_DOCS_SCREENSHOTS=1 playwright test e2e/current-features.smoke.spec.ts --grep 生成公开文档截图",
+    "audit": "npm audit --audit-level=high",
+    "lint": "eslint src e2e playwright.config.ts vite.config.ts --max-warnings=0"
+  },
+  "dependencies": {
+    "@amap/amap-jsapi-loader": "^1.0.1",
+    "@phosphor-icons/react": "^2.1.10",
+    "@tanstack/react-query": "^5.90.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-router": "^8.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.62.0",
+    "@testing-library/jest-dom": "^7.0.0",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^26.1.1",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.1.0",
+    "@vitest/coverage-v8": "^4.1.10",
+    "eslint": "^10.8.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "jsdom": "^30.0.0",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.65.0",
+    "vite": "^8.0.0",
+    "vitest": "^4.0.0"
+  }
+}

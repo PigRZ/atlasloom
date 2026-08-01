@@ -1,0 +1,211 @@
+# 基础库接口路径。
+/library:
+  get:
+    operationId: getLibraryState
+    summary: Get the global library revision
+    responses:
+      '200':
+        description: Global library state
+        content:
+          application/json:
+            schema:
+              $ref: ../components/library.yaml#/schemas/LibraryStateResponse
+    tags:
+    - 基础库
+/library/snapshot:
+  get:
+    operationId: exportLibrarySnapshot
+    summary: Download the latest complete global library snapshot
+    responses:
+      '200':
+        description: Complete global library snapshot
+        content:
+          application/json:
+            schema:
+              $ref: ../components/library.yaml#/schemas/LibrarySnapshotPayload
+    tags:
+    - 基础库
+/library/tags/presets:
+  post:
+    operationId: addTravelTypeTagPresets
+    summary: Add missing built-in place and expense type tags
+    parameters:
+    - $ref: ../components/common.yaml#/parameters/CSRF
+    - $ref: ../components/common.yaml#/parameters/Idempotency
+    responses:
+      '200':
+        description: Missing presets were added atomically, or no changes were needed
+        content:
+          application/json:
+            schema:
+              $ref: ../components/library.yaml#/schemas/TagPresetsResponse
+      '403':
+        $ref: ../components/common.yaml#/responses/Problem
+      '409':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 基础库
+/library/{libraryResource}:
+  parameters:
+  - name: libraryResource
+    in: path
+    required: true
+    schema:
+      $ref: ../components/library.yaml#/schemas/LibraryResourceName
+  get:
+    operationId: listLibraryRecords
+    summary: List global library records
+    responses:
+      '200':
+        description: Global library records
+        content:
+          application/json:
+            schema:
+              $ref: ../components/library.yaml#/schemas/LibraryRecordsResponse
+    tags:
+    - 基础库
+  post:
+    operationId: createLibraryRecord
+    summary: Create a global library record
+    parameters:
+    - $ref: ../components/common.yaml#/parameters/CSRF
+    - $ref: ../components/common.yaml#/parameters/Idempotency
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../components/library.yaml#/schemas/CreateLibraryRecord
+    responses:
+      '201':
+        description: Global library record and complete library snapshot created
+        content:
+          application/json:
+            schema:
+              $ref: ../components/library.yaml#/schemas/LibraryMutationResponse
+      '403':
+        $ref: ../components/common.yaml#/responses/Problem
+      '409':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 基础库
+/library/{libraryResource}/{libraryRecordId}:
+  parameters:
+  - name: libraryResource
+    in: path
+    required: true
+    schema:
+      $ref: ../components/library.yaml#/schemas/LibraryResourceName
+  - name: libraryRecordId
+    in: path
+    required: true
+    schema:
+      type: string
+  get:
+    operationId: getLibraryRecord
+    summary: Get a global library record
+    responses:
+      '200':
+        description: Global library record
+        content:
+          application/json:
+            schema:
+              $ref: ../components/library.yaml#/schemas/LibraryRecordResponse
+      '404':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 基础库
+  patch:
+    operationId: updateLibraryRecord
+    summary: Update a global library record
+    parameters:
+    - $ref: ../components/common.yaml#/parameters/CSRF
+    - $ref: ../components/common.yaml#/parameters/IfMatch
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../components/library.yaml#/schemas/PatchLibraryRecord
+    responses:
+      '200':
+        description: Global library record and snapshot updated
+        content:
+          application/json:
+            schema:
+              $ref: ../components/library.yaml#/schemas/LibraryMutationResponse
+      '400':
+        $ref: ../components/common.yaml#/responses/Problem
+      '403':
+        $ref: ../components/common.yaml#/responses/Problem
+      '404':
+        $ref: ../components/common.yaml#/responses/Problem
+      '409':
+        $ref: ../components/common.yaml#/responses/Problem
+      '412':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 基础库
+  delete:
+    operationId: deleteLibraryRecord
+    summary: Delete an unreferenced global library record
+    parameters:
+    - $ref: ../components/common.yaml#/parameters/CSRF
+    - $ref: ../components/common.yaml#/parameters/IfMatch
+    - name: replaceTagWithOther
+      in: query
+      schema:
+        type: boolean
+        default: false
+      description: Replace tag references with the fallback tag before deletion
+    - name: deleteLoginCredential
+      in: query
+      schema:
+        type: boolean
+        default: false
+      description: Explicitly revoke the credential and sessions when deleting an inactive unreferenced member
+    responses:
+      '200':
+        description: Global library record deleted
+        content:
+          application/json:
+            schema:
+              $ref: ../components/library.yaml#/schemas/LibraryDeleteResponse
+      '403':
+        $ref: ../components/common.yaml#/responses/Problem
+      '404':
+        $ref: ../components/common.yaml#/responses/Problem
+      '409':
+        $ref: ../components/common.yaml#/responses/Problem
+      '412':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 基础库
+/library/{libraryResource}/{libraryRecordId}/deletion-impact:
+  parameters:
+  - name: libraryResource
+    in: path
+    required: true
+    schema:
+      $ref: ../components/library.yaml#/schemas/LibraryResourceName
+  - name: libraryRecordId
+    in: path
+    required: true
+    schema:
+      type: string
+  get:
+    operationId: getLibraryDeletionImpact
+    summary: List records affected by deleting a global library record
+    responses:
+      '200':
+        description: Affected trip records
+        content:
+          application/json:
+            schema:
+              $ref: ../components/library.yaml#/schemas/LibraryDeletionImpact
+      '403':
+        $ref: ../components/common.yaml#/responses/Problem
+      '404':
+        $ref: ../components/common.yaml#/responses/Problem
+    tags:
+    - 基础库

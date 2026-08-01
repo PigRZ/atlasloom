@@ -1,0 +1,16 @@
+{
+  "users": [
+    {
+      "mobile": "13800138000",
+      "memberName": "管理员姓名",
+      "admin": true,
+      "password": "请替换为至少十二位的密码"
+    },
+    {
+      "mobile": "13900139000",
+      "memberName": "成员姓名",
+      "admin": false,
+      "password": "请替换为另一组至少十二位的密码"
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+# 已有共享 HTTPS 网关使用的应用路径片段，由环境构建脚本替换路径和回环端口。
+location = /__APP_BASE_PATH__ {
+    return 308 /__APP_BASE_PATH__/;
+}
+
+location = /__APP_BASE_PATH__/healthz {
+    proxy_pass http://127.0.0.1:__APP_PORT__/healthz;
+}
+
+location = /__APP_BASE_PATH__/api/healthz {
+    proxy_pass http://127.0.0.1:__API_PORT__/healthz;
+}
+
+location /__APP_BASE_PATH__/api/ {
+    proxy_pass http://127.0.0.1:__API_PORT__/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Prefix /__APP_BASE_PATH__/api;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_buffering off;
+}
+
+# 高德 JSAPI 安全模式要求 _AMapService 是域名后的固定一级路由。
+location /_AMapService/ {
+    proxy_pass http://127.0.0.1:__API_PORT__;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_buffering off;
+}
+
+location /__APP_BASE_PATH__/ {
+    proxy_pass http://127.0.0.1:__APP_PORT__;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Prefix /__APP_BASE_PATH__;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_buffering off;
+}
