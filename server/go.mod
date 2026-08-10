@@ -3,7 +3,7 @@ module my-travel/server
 go 1.26.5
 
 require (
-	github.com/getkin/kin-openapi v0.145.0
+	github.com/getkin/kin-openapi v0.146.0
 	go.mongodb.org/mongo-driver/v2 v2.8.0
 	golang.org/x/crypto v0.54.0
 )
